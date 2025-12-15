@@ -1,0 +1,6 @@
+[deps]
+CLOUD18_calibration = "aea52f13-5aae-4f1b-90a3-a8b28c4d85ad"
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+
+[sources]
+CLOUD18_calibration = {path = ".."}

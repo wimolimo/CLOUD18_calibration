@@ -1,0 +1,7 @@
+name = "CLOUD18_calibration"
+uuid = "aea52f13-5aae-4f1b-90a3-a8b28c4d85ad"
+authors = ["Timo Wittler wittler.timo@uibk.ac.at"]
+version = "1.0.0-DEV"
+
+[compat]
+julia = "1.11.7"
