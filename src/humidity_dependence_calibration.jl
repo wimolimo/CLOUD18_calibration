@@ -16,6 +16,14 @@ import TOFTracer2.ImportFunctions as ImpF
 
 export analyze_humidity_dependence
 
+dirname = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Licor")
+filename = joinpath(dirname, "2025-11-21.txt")
+
+bg_dirname = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "humidity_dependent_BG")
+bg_filename = joinpath(bg_dirname, "")
+
+
+
 function analyze_humidity_dependence()
 
 end
