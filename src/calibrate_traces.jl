@@ -21,7 +21,7 @@ dir_calib_data = joinpath(dir_data, "Calibration")
 dir_licor_data = joinpath(dir_data, "Licor")
 
 #dry calibration file
-drycalibsfile = joinpath(dir_calib_data, "CLOUD18_dry_calibrations.h5") #FILENAME ANPASSEN!!! WIE SIEHT DIESE FILE AUS???
+drycalibsfile = joinpath(dir_calib_data, "2025-11-25 08h28m48_1ppb_std_brown.h5") #FILENAME ANPASSEN!!! WIE SIEHT DIESE FILE AUS???
 
 #humidity dependent calibration file
 dir_humidcalib = joinpath(dir_calib_data, "Humidity-dependent_std", "results")
@@ -42,17 +42,34 @@ resultsfiles_to_calibrate = ["$(dir_results_to_calibrate)/results/_result.hdf5"]
 #####################################################
 # load and prepare metadata of the final calibration
 #####################################################
-### find relation of sum of primary ions to hexanone
-if !isdefined(Main,:hexanone_vs_pi_params)
-    if HDF5.ishdf5(drycalibsfile)
-        hexanone_vs_pi_params = CalF.dryCal_selectPIandRefDataFromIFIG(drycalibsfile)
-        hexanone_vs_pi_params_to_export = vcat(hexanone_vs_pi_params[3],["parameters" "errors"],hcat(hexanone_vs_pi_params[1],hexanone_vs_pi_params[2]))
-        writedlm("$(dirname(drycalibsfile))hexanone_vs_pi_params_csv.csv",hexanone_vs_pi_params_to_export)
-    else #if file is not hdf5, assume csv and read data as DataFrame, and construct tuple
-        a = CSV.read(drycalibsfile,DataFrame, header=[2])
-        b = CSV.read(drycalibsfile,DataFrame;footerskip=3,header=false)
-        hexanone_vs_pi_params = (a.parameters,a.errors,[values(b[1,:])[1],values(b[1,:])[2]])        
+
+"""
+    load_hexanone_vs_pi_params(drycalibsfile::String)
+
+Load or create and save hexanone vs. primary ion calibration parameters, using TOFTracer2 with CalibrationFunctions.dryCal_selectPIandRefDataFromIFIG.
+
+# Arguments
+- `drycalibsfile::String`: Path to dry calibration file (HDF5 or CSV)
+
+# Returns
+- `hexanone_vs_pi_params::Tuple`: Tuple containing parameters, errors, and metadata
+
+# Creates
+- CSV file with hexanone vs. primary ion calibration parameters if loaded from HDF5
+"""
+function load_hexanone_vs_pi_params(drycalibsfile::String)
+    if !isdefined(Main,:hexanone_vs_pi_params)
+        if HDF5.ishdf5(drycalibsfile)
+            hexanone_vs_pi_params = CalF.dryCal_selectPIandRefDataFromIFIG(drycalibsfile)
+            hexanone_vs_pi_params_to_export = vcat(hexanone_vs_pi_params[3],["parameters" "errors"],hcat(hexanone_vs_pi_params[1],hexanone_vs_pi_params[2]))
+            writedlm("$(dirname(drycalibsfile))hexanone_vs_pi_params_csv.csv",hexanone_vs_pi_params_to_export)
+        else #if file is not hdf5, assume csv and read data as DataFrame, and construct tuple
+            a = CSV.read(drycalibsfile,DataFrame, header=[2])
+            b = CSV.read(drycalibsfile,DataFrame;footerskip=3,header=false)
+            hexanone_vs_pi_params = (a.parameters,a.errors,[values(b[1,:])[1],values(b[1,:])[2]])        
+        end
     end
+    return hexanone_vs_pi_params
 end
 
 #load humidity data inlet
@@ -71,6 +88,7 @@ end
 
 calibDF = CSV.read(humidcalibsfile, DataFrame; header=2)
 
+#stattdessen plot humidity dep wie zhensen gezeigt hat?
 CalF.plot_humdep_fromCalibParameters(;calibDF=calibDF,
     humparams=humparams, #from CalF.getInletCLOUDHumidityRelation #EXCHANGE
     cloudhum=cloudhum, #REALLY? GET FROM LICOR?
