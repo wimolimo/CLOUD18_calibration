@@ -2,7 +2,7 @@
 Analyze humidity dependence of calibration data from CLOUD18 Licor measurements.
 (partially adapted from analyze_humidityDependentCalibrations.jl)
 """
-module analyze_humidity_dependence
+#module analyze_humidity_dependence
 
 using HDF5
 # import PyCall
@@ -24,11 +24,17 @@ export analyze_humidity_dependence
 plotStart = DateTime(2000, 1, 1, 0, 0, 0)
 plotEnd = DateTime(3000, 1, 1, 0, 0, 0)
 
-dirname = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Licor")
-filename = joinpath(dirname, "2025-11-21.txt")
+# humidity dependent std files
+std_dirname = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "Humidity-dependent_std", "results")
+std_filename = joinpath(std_dirname, "_result.hdf5")
 
+# humidity measurements (need correct time frame!!!!!)
+licor_dirname = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Licor")
+licor_filename = joinpath(licor_dirname, "2025-11-21.txt")
+
+# background measurements
 bg_dirname = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "humidity_dependent_BG")
-bg_filename = joinpath(bg_dirname, "")
+bg_filename = joinpath(bg_dirname, "2025-11-24 01h00m59_1.5ppth_1ppb_std_brown.h5")
 
 ions2plot = "NH4+" # "NH4+" # "all", "NH4+", "H+"
 STD_masses_dict = massLibrary.CLOUD_brownSTD_masses
@@ -39,6 +45,7 @@ STD_masses_dict = massLibrary.CLOUD_brownSTD_masses
 
 massesToPlot = []
 keysToPlot = []
+
 if ions2plot == "NH4+"
     for key in keys(STD_masses_dict)
         append!(massesToPlot, STD_masses_dict[key][1][2])
@@ -50,7 +57,7 @@ elseif ions2plot == "H+"
         append!(massesToPlot, STD_masses_dict[key][1][1])
         push!(keysToPlot, key)
     end
-    ion = "NH4+"
+    ion = "H+"
 elseif ions2plot == "all"
     for key in ["TMB"] # you choose, which
         append!(massesToPlot, STD_masses_dict[key][1])
@@ -62,8 +69,8 @@ end
 # plot raw data and select filters
 ##################################
 
-tracesFig, tracesAx, measResult = PlotFunctions.plotTracesFromHDF5(file, massesToPlot;
-    plotHighTimeRes=true,
+tracesFig, tracesAx, measResult = PlotFunctions.plotTracesFromHDF5(std_filename, massesToPlot;
+    plotHighTimeRes=false,
     smoothing=10,
     backgroundSubstractionMode=0,
     timedelay=Dates.Hour(0),
@@ -74,12 +81,12 @@ tracesFig, tracesAx, measResult = PlotFunctions.plotTracesFromHDF5(file, massesT
 )
 savefig("$(fp)Traces_$(ions2plot).png")
 
-humDat = PlotFunctions.load_plotLicorData(humfile; ax=tracesAx)
+humDat = PlotFunctions.load_plotLicorData(licor_filename; ax=tracesAx)
 tracesFig.tight_layout()
 
 if !isdefined(Main, :bgTimes)
     println("do the next part interactively:\n")
-    IFIG = PlotFunctions.InteractivePlot(file, tracesAx)
+    IFIG = PlotFunctions.InteractivePlot(std_filename, tracesAx)
     (humidityLimits, bgTimes, signalTimes) = CalF.humCal_getDatalimitsFromPlot(IFIG)
 end
 
@@ -226,5 +233,5 @@ end
 
 
 
-end # module analyze_humidity_dependence
+#end # module analyze_humidity_dependence
 
