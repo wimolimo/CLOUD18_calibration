@@ -6,7 +6,7 @@ module CLOUD18_calibration
 
 include("humidity_dependence_calibration.jl")
 include("calibrate_traces.jl")
-using .HumidityDependence, .Calibrate_Traces
-export HumidityDependence, Calibrate_Traces
+using .HumidityDependence, .CalibrateTraces
+export HumidityDependence, CalibrateTraces, calibrate_traces_main
 
 end

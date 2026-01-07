@@ -1,5 +1,5 @@
 #main TO Do: find out what to do about humparams and cloudhum, where to get it from.
-module Calibrate_Traces
+module CalibrateTraces
 
 export calibrate_traces_main#, CalibrationConfig
 
@@ -442,4 +442,4 @@ end
 
 
 
-end # module Calibrate_Traces
+end # module CalibrateTraces
