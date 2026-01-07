@@ -1,7 +1,7 @@
 #main TO Do: find out what to do about humparams and cloudhum, where to get it from.
 module Calibrate_Traces
 
-# export calibrate_traces_main(CalibrationConfig)
+export calibrate_traces_main(CalibrationConfig)
 
 #using ... from ...
 using HDF5
@@ -34,8 +34,8 @@ struct CalibrationConfig
     resultfp::String
     resultfiles::Vector{String}
     ionization::String
-    primaryionslist #::Vector{Float64}
-    refMass #::Float64
+    primaryionslist::Vector{Float64}
+    refMass::Float64
     refName::String
     exportTraces::Bool
     HeaderForExportDict::Dict{String,Any}
@@ -105,11 +105,8 @@ Load or create and save hexanone vs. primary ion calibration parameters, using T
 function load_hexVSpis_params(drycalibsfile::String)
     if HDF5.ishdf5(drycalibsfile)
         hexVSpis_params = CalF.dryCal_selectPIandRefDataFromIFIG(drycalibsfile)
-        hexVSpis_params2export =
-            vcat(hexVSpis_params[3], ["parameters" "errors"],
-                 hcat(hexVSpis_params[1], hexVSpis_params[2]))
-        writedlm("$(dirname(drycalibsfile))Hexanone_VS_PIs_params.csv",
-                 hexVSpis_params2export)
+        hexVSpis_params2export = vcat(hexVSpis_params[3], ["parameters" "errors"], hcat(hexVSpis_params[1], hexVSpis_params[2]))
+        writedlm("$(dirname(drycalibsfile))Hexanone_VS_PIs_params.csv", hexVSpis_params2export) #save parameters for later use?
     else
         a = CSV.read(drycalibsfile, DataFrame, header=[2])
         b = CSV.read(drycalibsfile, DataFrame; footerskip=3, header=false)
@@ -160,7 +157,6 @@ function plot_humidity_dependent_calibration(humcalibfile, humparams, licorDat, 
 
     return calibDF
 end
-
 
 
 function load_and_merge_results(resultfiles, primaryionslist)
@@ -225,6 +221,8 @@ function build_calibration_traces(
     fref = findfirst(calibDF[!, "Sumformula"] .== refName)
     refparams = calibDF[fref, [:p1, :p2, :p3, :p4, :p5]]
 
+    println("calibrating all compounds with >2 oxygen atoms and undefined ones with reference $(refName) dry.")
+
     #composition based filters
     undeffilter = BitVector(sum(mResfinal.MasslistCompositions; dims=1)[1, :] .== 0)
 
@@ -233,11 +231,14 @@ function build_calibration_traces(
     oneoxygenfilter = BitVector(mResfinal.MasslistCompositions[oxygen_number, :] .== 1)
 
     twoplusoxygenfilter = BitVector(mResfinal.MasslistCompositions[oxygen_number, :] .>= 2)
+
+    println("found $(sum(undeffilter)) undefined masses, $(sum(oneoxygenfilter)) masses with 1 oxygen atom, and $(sum(twoplusoxygenfilter)) masses with >=2 oxygen atoms")
     
     #hexanone-primary-ion factor
     f_hex = CalF.applyFunction(summedPIs, hexVSpis_params[1]; functiontype = hexVSpis_params[3][1])
 
     #dry / kinetic limit calibration for undef and >=2 O
+    println("calibrating all compounds with >2 oxygen atoms and undefined ones with reference $(refName) dry.")
     dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .=
         f_hex .*
         CalF.applyFunction(
@@ -247,6 +248,7 @@ function build_calibration_traces(
         )
 
     #humid / equilibrium calibration for 1 O
+    println("calibrating all compounds with 1 oxygen atom humidity-dependent with reference $(refName)")
     dcps_per_ppb[:, oneoxygenfilter] .=
         f_hex .*
         CalF.applyFunction(
@@ -262,16 +264,8 @@ function build_calibration_traces(
     indices = Int[]
 
  #= for (name, mass) in zip(calibDF[!, "Sumformula"], calibDF[!, "Mass"])
-        params =
-            calibDF[
-                findfirst(calibDF[!, "Sumformula"] .== name),
-                [:p1, :p2, :p3, :p4, :p5]
-            ]
-
-        index =
-            findfirst(
-                isapprox.(mResfinal.MasslistMasses, mass, atol=0.0001)
-            )
+        params = calibDF[findfirst(calibDF[!, "Sumformula"] .== name), [:p1, :p2, :p3, :p4, :p5]]
+        index = findfirst(isapprox.(mResfinal.MasslistMasses, mass, atol=0.0001))
  =#
     for row in eachrow(calibDF)
     params = row[[:p1, :p2, :p3, :p4, :p5]]
@@ -281,15 +275,7 @@ function build_calibration_traces(
         if index isa Int
             dcps_per_ppb[:, index] =
                 f_hex .*
-                CalF.applyFunction(
-                    CalF.applyFunction(
-                        licor_final,
-                        humparams[1];
-                        functiontype = humparams[3][1]
-                    ),
-                    params;
-                    functiontype = "double exponential"
-                )
+                CalF.applyFunction(CalF.applyFunction(licor_final, humparams[1]; functiontype = humparams[3][1]), params; functiontype = "double exponential")
 
             push!(indices, index)
         end
