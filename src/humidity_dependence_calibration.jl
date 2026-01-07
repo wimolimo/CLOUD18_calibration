@@ -53,6 +53,7 @@ println("select masses and ions to analyze")
 
 massesToPlot = []
 keysToPlot = []
+print(keys(STD_masses_dict))
 
 if ions2plot == "NH4+"
     for key in keys(STD_masses_dict)
@@ -110,6 +111,7 @@ end
 #######################################
 # calculate and plot calibration points
 #######################################
+
 println("calculate and plot calibration points")
 
 (calibData, calibData_std, humidities) = CalF.humcal_getHumidityDependentSensitivity(measResult, humDat;
