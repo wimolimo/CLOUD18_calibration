@@ -2,11 +2,14 @@
 Analyze humidity dependence of calibration data from CLOUD18 Licor measurements.
 (partially adapted from analyze_humidityDependentCalibrations.jl)
 """
-#module analyze_humidity_dependence
+module HumidityDependence
 
 using HDF5
 # import PyCall
 # pygui(:tk) # :tk, :gtk3, :gtk, :qt5, :qt4, :qt, or :wx
+
+# Force matplotlib to use a headless backend before PyCall / Plots load
+# ENV["MPLBACKEND"] = "agg"
 using Plots
 using Dates
 using CSV
@@ -20,6 +23,8 @@ import TOFTracer2.ImportFunctions as ImpF
 import TOFTracer2.massLibrary as massLibrary
 
 export analyze_humidity_dependence
+
+function analyze_humidity_dependence()
 
 plotStart = DateTime(2000, 1, 1, 0, 0, 0)
 plotEnd = DateTime(3000, 1, 1, 0, 0, 0)
@@ -36,12 +41,15 @@ licor_filename = joinpath(licor_dirname, "2025-11-21.txt")
 bg_dirname = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "humidity_dependent_BG")
 bg_filename = joinpath(bg_dirname, "2025-11-24 01h00m59_1.5ppth_1ppb_std_brown.h5")
 
+println("load data")
 ions2plot = "NH4+" # "NH4+" # "all", "NH4+", "H+"
 STD_masses_dict = massLibrary.CLOUD_brownSTD_masses
 
 ####################################
 # select masses and ions to analyze
 ####################################
+
+println("select masses and ions to analyze")
 
 massesToPlot = []
 keysToPlot = []
@@ -69,6 +77,8 @@ end
 # plot raw data and select filters
 ##################################
 
+println("plot raw data and select filters")
+
 tracesFig, tracesAx, measResult = PlotFunctions.plotTracesFromHDF5(std_filename, massesToPlot;
     plotHighTimeRes=false,
     smoothing=10,
@@ -79,11 +89,12 @@ tracesFig, tracesAx, measResult = PlotFunctions.plotTracesFromHDF5(std_filename,
     timeFrame2plot=(plotStart, plotEnd),
     ion=ion
 )
-savefig("$(fp)Traces_$(ions2plot).png")
+savefig("$(std_filename)Traces_$(ions2plot).png")
 
 humDat = PlotFunctions.load_plotLicorData(licor_filename; ax=tracesAx)
 tracesFig.tight_layout()
 
+# if bgTimes, humidityLimits and signalTimes is not globally defined, define them interactively here
 if !isdefined(Main, :bgTimes)
     println("do the next part interactively:\n")
     IFIG = PlotFunctions.InteractivePlot(std_filename, tracesAx)
@@ -99,6 +110,7 @@ end
 #######################################
 # calculate and plot calibration points
 #######################################
+println("calculate and plot calibration points")
 
 (calibData, calibData_std, humidities) = CalF.humcal_getHumidityDependentSensitivity(measResult, humDat;
     hums=humidityLimits,
@@ -114,6 +126,8 @@ ylabel("sensitivity [dcps ppt⁻¹]")
 ################################
 # plot and export fit parameters
 ################################
+
+println("plot and export fit parameters")
 
 hum4plot = collect(0:0.2:12)
 fitParams = []
@@ -142,14 +156,14 @@ end
 
 
 legend()
-savefig("$(fp)calibration_lin_$(ions2plot).png")
+savefig("$(std_filename)calibration_lin_$(ions2plot).png")
 yscale("log")
-savefig("$(fp)calibration_log_$(ions2plot).png")
+savefig("$(std_filename)calibration_log_$(ions2plot).png")
 
 fitParams2Export = hvcat(length(measResult.MasslistMasses), (fitParams[a][j] for a in 1:length(measResult.MasslistMasses), j in 1:length(fitParams[1]))...)
 fitParamErrors2Export = hvcat(length(measResult.MasslistMasses), (fitParamErrors[a][j] for a in 1:length(measResult.MasslistMasses), j in 1:length(fitParamErrors[1]))...)
 
-ExpF.exportFitParameters("$(fp)fitParameters.txt", fitParams2Export, fitParamErrors2Export,
+ExpF.exportFitParameters("$(std_filename)fitParameters.txt", fitParams2Export, fitParamErrors2Export,
     measResult.MasslistMasses, measResult.MasslistCompositions;
     fitfunction="sensitivity(AH) = p1 * exp.(-p2*AH) .+ p3*exp.(-p4*AH) .+ p5")
 
@@ -158,6 +172,8 @@ ExpF.exportFitParameters("$(fp)fitParameters.txt", fitParams2Export, fitParamErr
 # calculate and plot calibration points
 #######################################
 
+println("re-calculate and plot calibration points with bg corrections")
+
 (calibData, calibData_std, humidities) = CalF.humcal_getHumidityDependentSensitivity(measResult, humDat;
     hums=humidityLimits,
     bgtimes=bgTimes,
@@ -172,6 +188,8 @@ ylabel("sensitivity [dcps ppt⁻¹]")
 ################################
 # plot and export fit parameters
 ################################
+
+println("plot and export fit parameters")
 
 hum4plot = collect(0:0.2:12)
 fitParams = []
@@ -199,20 +217,22 @@ else
 end
 
 legend()
-savefig("$(fp)calibration_lin_$(ions2plot).png")
+savefig("$(std_filename)calibration_lin_$(ions2plot).png")
 yscale("log")
-savefig("$(fp)calibration_log_$(ions2plot).png")
+savefig("$(std_filename)calibration_log_$(ions2plot).png")
 
 fitParams2Export = hvcat(length(measResult.MasslistMasses), (fitParams[a][j] for a in 1:length(measResult.MasslistMasses), j in 1:length(fitParams[1]))...)
 fitParamErrors2Export = hvcat(length(measResult.MasslistMasses), (fitParamErrors[a][j] for a in 1:length(measResult.MasslistMasses), j in 1:length(fitParamErrors[1]))...)
 
-ExpF.exportFitParameters("$(fp)fitParameters.txt", fitParams2Export, fitParamErrors2Export,
+ExpF.exportFitParameters("$(std_filename)fitParameters.txt", fitParams2Export, fitParamErrors2Export,
     measResult.MasslistMasses, measResult.MasslistCompositions;
     fitfunction="sensitivity(AH) = p1 * exp.(-p2*AH) .+ p3*exp.(-p4*AH) .+ p5")
 
 ##########################################################################
 # correct fit parameters relative to Hexanone and save these also to file
 ##########################################################################
+
+println("calculate and export fit parameters relative to Hexanone")
 
 if round(massLibrary.HEXANONE_nh4[1],digits=3) in round.(measResult.MasslistMasses,digits=3)
     fitParamsHex = fitParams2Export[:, isapprox.(measResult.MasslistMasses, massLibrary.HEXANONE_nh4[1], atol=0.0001)]
@@ -221,17 +241,16 @@ if round(massLibrary.HEXANONE_nh4[1],digits=3) in round.(measResult.MasslistMass
     fitParams2Export_rel = fitParams2Export ./ [maxHexanone, 1, maxHexanone, 1, maxHexanone]
     fitParamErrors2Export_rel = fitParamErrors2Export ./ [maxHexanone, 1, maxHexanone, 1, maxHexanone]
 
-    ExpF.exportFitParameters("$(fp)fitParameters_relative.txt", fitParams2Export_rel, fitParamErrors2Export_rel,
+    ExpF.exportFitParameters("$(std_filename)fitParameters_relative.txt", fitParams2Export_rel, fitParamErrors2Export_rel,
         measResult.MasslistMasses, measResult.MasslistCompositions;
         fitfunction="relative_sensitivity_to_Hexanone(AH) = p1 * exp.(-p2*AH) .+ p3*exp.(-p4*AH) .+ p5")
 end
 
+end # function analyze_humidity_dependence
 
-function humidity_dependence_analysis()
-    print("Hello World!")
+
+end # module humidity_dependence
+
+if abspath(PROGRAM_FILE) == @__FILE__
+    analyze_humidity_dependence()
 end
-
-
-
-#end # module analyze_humidity_dependence
-
