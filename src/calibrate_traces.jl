@@ -1,7 +1,7 @@
 #main TO Do: find out what to do about humparams and cloudhum, where to get it from.
 module Calibrate_Traces
 
-export calibrate_traces_main(CalibrationConfig)
+export calibrate_traces_main#, CalibrationConfig
 
 #using ... from ...
 using HDF5
