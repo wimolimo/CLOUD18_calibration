@@ -13,7 +13,7 @@ using DelimitedFiles
 #import Statistics
 
 #check !
-using ToFTracer2
+using TOFTracer2
 import TOFTracer2.CalibrationFunctions as CalF
 import TOFTracer2.ImportFunctions as ImpF
 import TOFTracer2.InterpolationFunctions as IntpF
@@ -29,6 +29,8 @@ import TOFTracer2.massLibrary
 
 struct CalibrationConfig
     dir_licor_data::String
+    hexVSpis_params
+    licorDat
     humcalibfile::String
     drycalibsfile::String
     resultfp::String
@@ -63,7 +65,7 @@ refName = TOFTracer2.MasslistFunctions.sumFormulaStringFromCompositionArray(mass
 
 exportTraces = true # if true, check HeaderForExportDict below:
 HeaderForExportDict = Dict(
-        "title"=>"oVOCs from Runs...",
+        "title"=>"Exampletitle...",
         "level"=>2,
         "version"=>"01",
         "authorname_mail"=>"Ruth, Clea clea.ruth@student.uibk.ac.at",
@@ -74,7 +76,7 @@ HeaderForExportDict = Dict(
         )
 
 #= humparams is not defined yet
-humparams=(Float64[],Float64[]," ")
+humparams=(Float64[],Float64[]," ") from CalF.getInletCLOUDHumidityRelation
 humparams = fitParameters(cloudhumfinal, licorfinal; functiontype="exponential")
 cloudhumfinal = IntpF.sortSelectAverageSmoothInterpolate(time2interpolate2, cloudhum.time, cloudhum[!,cloudhumLabel]; returnSTdev=false, selectY=selectY.cloud)
 licorfinal = IntpF.sortSelectAverageSmoothInterpolate(time2interpolate2, licorDat.datetime, licorDat.H2O_mmolpermol; returnSTdev=false, selectY=selectY.inlet)
