@@ -27,6 +27,26 @@ import TOFTracer2.massLibrary
 # define relative filepaths of used data
 ################################
 
+"""
+    struct CalibrationConfig
+
+A struct to hold configuration parameters for trace calibration.
+
+#Arguments
+- `dir_licor_data::String`: Directory path containing Licor data files.
+- `hexVSpis_params`: Tuple containing hexanone vs. primary ion parameters.
+- `licorDat`: DataFrame containing Licor humidity data.
+- `humcalibfile::String`: Path to humidity calibration file (CSV).
+- `drycalibsfile::String`: Path to dry calibration file (HDF5 or CSV).
+- `resultfp::String`: File path to save the results.
+- `resultfiles::Vector{String}`: List of paths to result files that can be calibrated at the same time (HDF5).
+- `ionization::String`: Ionization method used (e.g., "NH4+").
+- `primaryionslist::Vector{Float64}`: List of primary ion masses to load.
+- `refMass::Float64`: Mass of the reference compound.
+- `refName::String`: Name of the reference compound.
+- `exportTraces::Bool`: Flag to indicate whether to export calibrated traces.
+- `HeaderForExportDict::Dict{String,Any}`: Dictionary containing information for export.
+"""
 struct CalibrationConfig
     dir_licor_data::String
     hexVSpis_params
@@ -43,7 +63,7 @@ struct CalibrationConfig
     HeaderForExportDict::Dict{String,Any}
 end
 
-dir_CLOUD18 = joinpath(@__DIR__, "..", "..", "..")
+dir_CLOUD18 = joinpath(@__DIR__, "..", "..")
 dir_calib_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Calibration")
 dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor")
 
@@ -72,7 +92,7 @@ HeaderForExportDict = Dict(
         "units"=>"ppt",
         "addcomment"=>"The data have been humidity-depently calibrated with Hexanone as reference (Onr=1), compounds with Onr>1 are calibrated with kinetic limit. All traces have been corrected to the duty-cycle-corrected primary ion trace. Uncertainty roughly factor 3. Not transmission-corrected yet.\n",
         "threshold"=>0,
-        "nrrows_addcomment" => 4
+        "nrrows_addcomment"=>4
         )
 
 #= humparams is not defined yet
@@ -85,10 +105,7 @@ cloudhum = CSV.read(frostpointfile, DataFrame; dateformat=frostpointDatetimeForm
         cloudhum.time = cloudhum.time .+ Year(2000)
     end =#
 
-# 
-#####################################################
-# load and prepare metadata of the final calibration
-#####################################################
+### FUNCTIONS
 
 """
     load_hexVSpis_params(drycalibsfile::String)
@@ -118,7 +135,17 @@ function load_hexVSpis_params(drycalibsfile::String)
 end
 
 
-#load humidity data inlet
+"""
+    load_licor_data(dir_licor_data::String)
+    
+Load Licor humidity data from text files in the specified directory.
+
+# Arguments
+- `dir_licor_data::String`: Directory path containing Licor data files.
+
+# Returns
+- `licorDat::DataFrame`: DataFrame containing loaded Licor humidity data.
+"""
 function load_licor_data(dir_licor_data::String)
     return ImpF.createLicorData_fromFiles(dir_licor_data;
         filefilter=r"licor_.*\.txt", #rename file to use with licor_restofthename.txt
@@ -128,39 +155,55 @@ function load_licor_data(dir_licor_data::String)
 end
 
 
-#interpolate licor data to ptr time
-function interpolate_licor_to_ptr_time(mResfinal, licorDat)
-    licor_final =
-        IntpF.sortSelectAverageSmoothInterpolate(
-            mResfinal.Times,
-            licorDat.time,
-            licorDat.value;
-            returnSTdev = false,
-            selectY = [0.0, Inf] #[-21, 5]
-        )
-    return licor_final
-end
+"""
+    plot_humidity_dependent_calibration(humcalibfile, humparams, licorDat, ionization)
+    
+Plot humidity-dependent calibration results and return calibration DataFrame.
 
+# Arguments
+- `humcalibfile::String`: Path to humidity calibration file (CSV).
+- `humparams`: Humidity parameters for calibration.
+- `licorDat::DataFrame`: DataFrame containing Licor humidity data.
+- `ionization::String`: Ionization method used (e.g., "NH4+").
 
-#plot humidity dependent calibration
+# Returns
+- `calibDF::DataFrame`: DataFrame containing calibration results.
+
+# Saves
+- Humidity-dependent calibration plot in the directory of `humcalibfile`.
+"""
 function plot_humidity_dependent_calibration(humcalibfile, humparams, licorDat, ionization)
     calibDF = CSV.read(humcalibfile, DataFrame; header=2)
 
     CalF.plot_humdep_fromCalibParameters(
         calibDF = calibDF,
         humparams = humparams,
-        cloudhum = licorDat.value,   # uses now Licor directly #TO DO check if ok!!!
+        cloudhum = licorDat.value,
         hum4plot = collect(0:0.2:12),
         savefp = dirname(humcalibfile),
         humdepcalibRelationship = "double exponential",
         humidityRelationship = "exponential",
         ionization = ionization
     )
-
     return calibDF
 end
+#should it also return the plot? or just save it?
+# TO DO: check if licorDat.value is ok to use here for cloudhum
+# TO DO: check where humparams is defined
 
+"""
+    load_and_merge_results(resultfiles, primaryionslist)
 
+Load and merge measurement results from multiple result files and return the merged results.
+
+# Arguments
+- `resultfiles::Vector{String}`: List of paths to result files (HDF5).
+- `primaryionslist::Vector{Float64}`: List of primary ion masses to load.
+
+# Returns
+- `mResfinal::struct`: Merged measurement results for all masses.
+- `mResfinal_PIs::struct`: Merged measurement results for primary ions only.
+"""
 function load_and_merge_results(resultfiles, primaryionslist)
     mResfinal_PIs =
         ResultFileFunctions.loadResults(
@@ -201,21 +244,67 @@ function load_and_merge_results(resultfiles, primaryionslist)
     return mResfinal, mResfinal_PIs
 end
 
+"""
+    compute_summed_primary_ions(mResfinal_PIs)
+
+Returns the summed primary ions from the measurement results.
+
+# Arguments
+- `mResfinal_PIs::struct`: Measurement results for primary ion intensities.
+
+# Returns
+- `summedPIs::Vector`: Summed primary ion intensities.
+"""
 function compute_summed_primary_ions(mResfinal_PIs)
-    summedPIs =
-        mResfinal_PIs.Traces .* sqrt.(100 ./ mResfinal_PIs.MasslistMasses)
+    summedPIs = mResfinal_PIs.Traces .* sqrt.(100 ./ mResfinal_PIs.MasslistMasses)
     summedPIs[summedPIs .<= 0] .= 0
     return summedPIs
 end
 
-function build_calibration_traces(
-    mResfinal,
-    summedPIs,
-    licor_final,
-    humparams,
-    calibDF,
-    hexVSpis_params,
-    refName)
+
+"""
+    interpolate_licor_to_ptr_time(mResfinal, licorDat)
+
+Return interpolated Licor humidity data to match the time points of the measurement results.
+
+# Arguments
+- `mResfinal::struct`: Measurement results containing time points.
+- `licorDat::DataFrame`: DataFrame containing Licor humidity data.
+
+# Returns
+- `licor_final::Vector`: Interpolated Licor humidity data aligned with measurement results time points. 
+"""
+function interpolate_licor_to_ptr_time(mResfinal, licorDat)
+    licor_final =
+        IntpF.sortSelectAverageSmoothInterpolate(
+            mResfinal.Times,
+            licorDat.time,
+            licorDat.value;
+            returnSTdev = false,
+            selectY = [-Inf, Inf] # option to get rid of outliers via the kwarg 'selectY' (use wisely) #[-21, 5]
+        )
+    return licor_final
+end
+
+"""
+    build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, calibDF, hexVSpis_params, refName)
+
+Build calibration traces for all compounds based on humidity-dependent and dry calibration.
+
+# Arguments
+- `mResfinal::struct`: Measurement results containing mass list and time points.
+- `summedPIs::Vector`: Summed primary ion intensities.
+- `licor_final::Vector`: Interpolated Licor humidity data aligned with measurement results time points.
+- `humparams::Vector`: Humidity parameters for calibration.
+- `calibDF::DataFrame`: Calibration data frame.
+- `hexVSpis_params::Vector`: Hexanone vs primary ion parameters.
+- `refName::String`: Reference compound name.
+
+# Returns
+- `dcps_per_ppb::Matrix`: Calibration traces in dcps per ppb for all compounds.
+- `indices::Vector{Int}`: Indices of calibrated compounds.
+"""
+function build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, calibDF, hexVSpis_params, refName)
 
     #initialize calibration traces
     dcps_per_ppb = zeros(length(mResfinal.Times), length(mResfinal.MasslistMasses))
@@ -254,11 +343,7 @@ function build_calibration_traces(
     dcps_per_ppb[:, oneoxygenfilter] .=
         f_hex .*
         CalF.applyFunction(
-            CalF.applyFunction(
-                licor_final,
-                humparams[1];
-                functiontype = humparams[3][1]
-            ),
+            CalF.applyFunction(licor_final, humparams[1]; functiontype = humparams[3][1]),
             refparams;
             functiontype = "double exponential"
         )
@@ -270,9 +355,8 @@ function build_calibration_traces(
         index = findfirst(isapprox.(mResfinal.MasslistMasses, mass, atol=0.0001))
  =#
     for row in eachrow(calibDF)
-    params = row[[:p1, :p2, :p3, :p4, :p5]]
-
-    index = findfirst(isapprox.(mResfinal.MasslistMasses, row.Mass; atol=1e-4))
+        params = row[[:p1, :p2, :p3, :p4, :p5]]
+        index = findfirst(isapprox.(mResfinal.MasslistMasses, row.Mass; atol=1e-4))
 
         if index isa Int
             dcps_per_ppb[:, index] =
@@ -288,6 +372,21 @@ end
 #what I changed: remove frostpoint dependency, use only licor instead. use humidity dependant calibration for 1 oxygen and kinetic limit calibration for 2+ oxygen.
 #TO DO: don't show 0 oxygen. --> later?
 
+"""
+    plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp)
+
+Plot calibration traces for selected compounds and save the plots. 
+
+# Arguments
+- `mResfinal::struct`: Measurement results containing mass list and time points.
+- `dcps_per_ppb::Matrix`: Calibration traces in dcps per ppb for all compounds.
+- `summedPIs::Vector`: Summed primary ion intensities.
+- `indices::Vector{Int}`: Indices of calibrated compounds.
+- `resultfp::String`: File path to save the plots.
+
+# Saves
+- Calibration traces plot as PNG and PDF files.
+"""
 function plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp)
     p1 = plot(size=(1000,600),
         xlabel="time [UTC]",
@@ -297,10 +396,7 @@ function plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, re
         plot!(p1,
             mResfinal.Times,
             dcps_per_ppb[:, i],
-            label = "index $i - $(round(mResfinal.MasslistMasses[i],digits=2)), " *
-                    MasslistFunctions.sumFormulaStringFromCompositionArray(
-                        mResfinal.MasslistCompositions[:,i]
-                    )
+            label = "index $i - $(round(mResfinal.MasslistMasses[i],digits=2)), " * MasslistFunctions.sumFormulaStringFromCompositionArray(mResfinal.MasslistCompositions[:,i])
         )
     end
 
@@ -310,25 +406,33 @@ function plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, re
     savefig(p1, "$(resultfp)CalibrationTraces.pdf")
 end
 
-function export_calibrated_traces(
-    mResfinal,
-    dcps_per_ppb,
-    indices,
-    ionization,
-    HeaderForExportDict,
-    resultfp
-)
-    filterCnr =
-        mResfinal.MasslistCompositions[
-            findfirst(mResfinal.MasslistElements .== "C"), :
-        ] .>= 1
 
-    #masses with 0 oxygen are filtered out
+"""
+    export_calibrated_traces(mResfinal, dcps_per_ppb, indices, ionization, HeaderForExportDict, resultfp)
+
+Export calibrated traces for masses with exactly one nitrogen and more than one oxygen to a CSV file with specified headers.
+
+# Arguments
+- `mResfinal::struct`: Measurement results containing mass list and time points.
+- `dcps_per_ppb::Matrix`: Calibration traces in dcps per ppb for all compounds.
+- `indices::Vector{Int}`: Indices of calibrated compounds.
+- `ionization::String`: Ionization method used (e.g., "NH4+").
+- `HeaderForExportDict::Dict{String,Any}`: Dictionary containing header information for export.
+- `resultfp::String`: File path to save the exported CSV file.
+
+# Saves
+- Exported calibrated traces as a CSV file.
+"""
+function export_calibrated_traces(mResfinal, dcps_per_ppb, indices, ionization, HeaderForExportDict, resultfp)
+
+    #filter for masses with at least one carbon
+    filterCnr = mResfinal.MasslistCompositions[findfirst(mResfinal.MasslistElements .== "C"), :] .>= 1
+
+    #filter for masses with calibration data
     filterNoCalib = vec(sum(dcps_per_ppb; dims=1) .> 0)
-    filterNnr =
-        mResfinal.MasslistCompositions[
-            findfirst(mResfinal.MasslistElements .== "N"), :
-        ] .== 1
+
+    #filter for masses with exactly one nitrogen
+    filterNnr = mResfinal.MasslistCompositions[findfirst(mResfinal.MasslistElements .== "N"), :] .== 1 #adjust if want to export other masses
 
     finalfilter = filterCnr .& filterNoCalib .& filterNnr
 
@@ -357,7 +461,6 @@ function export_calibrated_traces(
             nrrows_addcomment = HeaderForExportDict["nrrows_addcomment"]
     )
 
-
     ExpF.exportTracesCSV_CLOUD(
         resultfp,
         calibResult.MasslistElements,
@@ -376,9 +479,19 @@ end
 ################################
 # Main Script
 ################################
+"""
+    calibrate_traces_main(config::CalibrationConfig)
 
+Main function to calibrate measurement traces based on humidity-dependent and dry calibration.
 
+# Arguments
+- `config::CalibrationConfig`: Struct containing paths and parameters for calibration.
 
+# Saves
+- Humidity-dependent calibration plot in the directory of `humcalibfile`.
+- Calibration traces plot as PNG and PDF files.
+- Exported calibrated traces as CSV file.
+"""
 function calibrate_traces_main(config::CalibrationConfig)
 
     hexVSpis_params =
@@ -391,57 +504,28 @@ function calibrate_traces_main(config::CalibrationConfig)
             load_licor_data(config.dir_licor_data) :
             config.licorDat
 
-    calibDF =
-        plot_humidity_dependent_calibration(
-            config.humcalibfile,
-            humparams,
-            licorDat,
-            config.ionization
-        )
+    calibDF = plot_humidity_dependent_calibration(config.humcalibfile, humparams, licorDat, config.ionization)
 
     primaryionslist =
         isempty(config.primaryionslist) ?
             massLibrary.FullPrimaryionslist_NH4soft :
             config.primaryionslist
 
-    mResfinal, mResfinal_PIs =
-        load_and_merge_results(config.resultfiles, primaryionslist)
+    mResfinal, mResfinal_PIs = load_and_merge_results(config.resultfiles, primaryionslist)
 
     summedPIs = compute_summed_primary_ions(mResfinal_PIs)
 
     licor_final = interpolate_licor_to_ptr_time(mResfinal, licorDat)
 
-    dcps_per_ppb, indices =
-        build_calibration_traces(
-            mResfinal,
-            summedPIs,
-            licor_final,
-            humparams,
-            calibDF,
-            hexVSpis_params,
-            config.refName
-        )
+    dcps_per_ppb, indices = build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, calibDF, hexVSpis_params, config.refName)
 
-    plot_calibration_traces(
-        mResfinal,
-        dcps_per_ppb,
-        summedPIs,
-        indices,
-        config.resultfp
-    )
+    plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, config.resultfp)
 
     if config.exportTraces
-        export_calibrated_traces(
-            mResfinal,
-            dcps_per_ppb,
-            indices,
-            config.ionization,
-            config.HeaderForExportDict,
-            config.resultfp
-        )
+        export_calibrated_traces(mResfinal, dcps_per_ppb, indices, config.ionization, config.HeaderForExportDict, config.resultfp)
     end
 end
 
-
+#error estimation still missing
 
 end # module CalibrateTraces
