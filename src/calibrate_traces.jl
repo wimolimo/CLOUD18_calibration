@@ -71,7 +71,7 @@ dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor")
 drycalibsfile = joinpath(dir_calib_data, "2025-11-25 08h28m48_1ppb_std_brown.h5") #FILENAME ANPASSEN!!! WIE SIEHT DIESE FILE AUS???
 
 #humidity dependent calibration file
-humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "_result.hdf5") #humcalibfp; should be txt!!!! #from humidity dependence calibration script?
+humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "_result.hdf5") #humcalibfp; should be txt!!!! #from humidity dependence calibration script???
 
 #file to be calibrated at once with same mass list
 resultfp = joinpath(dir_calib_data, "Test") #change result filepath to data that is analyzed, results of this script are also saved here
@@ -118,8 +118,8 @@ Load or create and save hexanone vs. primary ion calibration parameters, using T
 # Returns
 - `hexVSpis_params`: Tuple containing parameters, errors, and metadata
 
-# Creates
-- CSV file with hexanone vs. primary ion calibration parameters if loaded from HDF5
+# Saves
+- CSV file with hexanone vs. primary ion calibration parameters if loaded from HDF5, in the same directory as `drycalibsfile`.
 """
 function load_hexVSpis_params(drycalibsfile::String)
     if HDF5.ishdf5(drycalibsfile)
@@ -162,87 +162,71 @@ Plot humidity-dependent calibration results and return calibration DataFrame.
 
 # Arguments
 - `humcalibfile::String`: Path to humidity calibration file (CSV).
-- `humparams`: Humidity parameters for calibration.
-- `licorDat::DataFrame`: DataFrame containing Licor humidity data.
 - `ionization::String`: Ionization method used (e.g., "NH4+").
 
 # Returns
 - `calibDF::DataFrame`: DataFrame containing calibration results.
 
 # Saves
-- Humidity-dependent calibration plot in the directory of `humcalibfile`.
+- Humidity-dependent relative sensitivity to hexanone plot in the directory of `humcalibfile`.
 """
-function plot_humidity_dependent_calibration(humcalibfile, humparams, licorDat, ionization)
+function plot_humidity_dependent_calibration(humcalibfile, ionization)
     calibDF = CSV.read(humcalibfile, DataFrame; header=2)
 
-    CalF.plot_humdep_fromCalibParameters(
-        calibDF = calibDF,
-        humparams = humparams,
-        cloudhum = licorDat.value,
-        hum4plot = collect(0:0.2:12),
-        savefp = dirname(humcalibfile),
-        humdepcalibRelationship = "double exponential",
-        humidityRelationship = "exponential",
-        ionization = ionization
-    )
+    #instead of CalF.plot_humdep_fromCalibParameters:
+    hum4plot=collect(0:0.2:12)
+    humdepcalibRelationship="double exponential"
+    ionization=ionization
+    
+    plt = plot()
+    for (name, mass) in zip(calibDF[!, "Sumformula"], calibDF[!, "Mass"])
+        f = findfirst(calibDF[!, "Sumformula"] .== name)
+        # get all params:
+        params = calibDF[f, [:p1, :p2, :p3, :p4, :p5]]
+        humdep = applyFunction(hum4plot,params;functiontype=humdepcalibRelationship)
+        plot(hum4plot, humdep, label=string(round(mass, digits=3), " - ", name))
+    end
+    xlabel!(plt, "absolute humidity [mmol mol⁻¹]")
+    ylabel!(plt, "relative sensitivity to Hexanone []")
+    # linear y-scale
+    plot!(plt, legend = :best)
+    savefig(plt, "$(dirname(humcalibfile))calibration_relHexanone_lin_$(ionization).png")
+    # logarithmic y-scale
+    plot!(plt, yscale = :log10)
+    savefig(plt, "$(dirname(humcalibfile))calibration_relHexanone_log_$(ionization).png")
+
     return calibDF
 end
 #should it also return the plot? or just save it?
-# TO DO: check if licorDat.value is ok to use here for cloudhum
-# TO DO: check where humparams is defined
 
 """
     load_and_merge_results(resultfiles, primaryionslist)
 
-Load and merge measurement results from multiple result files and return the merged results.
+Load and merge measurement results from multiple result files and return the merged results for all masses and for the primary ions only.
 
 # Arguments
 - `resultfiles::Vector{String}`: List of paths to result files (HDF5).
 - `primaryionslist::Vector{Float64}`: List of primary ion masses to load.
 
 # Returns
-- `mResfinal::struct`: Merged measurement results for all masses.
+- `mResfinal::struct`: Merged measurement results for all masses (selectedTimes, selectedMasslistMasses, masslistElements, masslistElementsMasses, selectedMassesCompositions, traces).
 - `mResfinal_PIs::struct`: Merged measurement results for primary ions only.
 """
 function load_and_merge_results(resultfiles, primaryionslist)
-    mResfinal_PIs =
-        ResultFileFunctions.loadResults(
-            resultfiles[1];
-            useAveragesOnly = true,
-            massesToLoad = primaryionslist
-        )
-
-    mResfinal =
-        ResultFileFunctions.loadResults(
-            resultfiles[1];
-            useAveragesOnly = true
-        )
+    mResfinal_PIs = ResultFileFunctions.loadResults(resultfiles[1]; useAveragesOnly = true, massesToLoad = primaryionslist)
+    mResfinal = ResultFileFunctions.loadResults(resultfiles[1]; useAveragesOnly = true)
 
     if length(resultfiles) > 1
         for i in 2:length(resultfiles)
-            mResfinal_PIs =
-                ResultFileFunctions.joinResultsTime(
-                    mResfinal_PIs,
-                    ResultFileFunctions.loadResults(
-                        resultfiles[i];
-                        useAveragesOnly = true,
-                        massesToLoad = primaryionslist
-                    )
-                )
-
-            mResfinal =
-                ResultFileFunctions.joinResultsTime(
-                    mResfinal,
-                    ResultFileFunctions.loadResults(
-                        resultfiles[i];
-                        useAveragesOnly = true
-                    )
-                )
+            mResfinal_PIs = ResultFileFunctions.joinResultsTime(mResfinal_PIs, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = true, massesToLoad = primaryionslist))
+            mResfinal = ResultFileFunctions.joinResultsTime(mResfinal, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = true))
         end
     end
 
     return mResfinal, mResfinal_PIs
 end
+
+
 
 """
     compute_summed_primary_ions(mResfinal_PIs)
@@ -275,16 +259,14 @@ Return interpolated Licor humidity data to match the time points of the measurem
 - `licor_final::Vector`: Interpolated Licor humidity data aligned with measurement results time points. 
 """
 function interpolate_licor_to_ptr_time(mResfinal, licorDat)
-    licor_final =
-        IntpF.sortSelectAverageSmoothInterpolate(
-            mResfinal.Times,
-            licorDat.time,
-            licorDat.value;
-            returnSTdev = false,
-            selectY = [-Inf, Inf] # option to get rid of outliers via the kwarg 'selectY' (use wisely) #[-21, 5]
-        )
-    return licor_final
-end
+    return IntpF.sortSelectAverageSmoothInterpolate(
+        mResfinal.Times,
+        licorDat.time,
+        licorDat.value;
+        returnSTdev = false,
+        selectY = [-Inf, Inf] # option to get rid of outliers via the kwarg 'selectY' (use wisely) #[-21, 5]
+    )
+    end
 
 """
     build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, calibDF, hexVSpis_params, refName)
@@ -312,8 +294,6 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, 
     fref = findfirst(calibDF[!, "Sumformula"] .== refName)
     refparams = calibDF[fref, [:p1, :p2, :p3, :p4, :p5]]
 
-    println("calibrating all compounds with >2 oxygen atoms and undefined ones with reference $(refName) dry.")
-
     #composition based filters
     undeffilter = BitVector(sum(mResfinal.MasslistCompositions; dims=1)[1, :] .== 0)
 
@@ -330,6 +310,7 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, 
 
     #dry / kinetic limit calibration for undef and >=2 O
     println("calibrating all compounds with >2 oxygen atoms and undefined ones with reference $(refName) dry.")
+    
     dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .=
         f_hex .*
         CalF.applyFunction(
@@ -504,7 +485,7 @@ function calibrate_traces_main(config::CalibrationConfig)
             load_licor_data(config.dir_licor_data) :
             config.licorDat
 
-    calibDF = plot_humidity_dependent_calibration(config.humcalibfile, humparams, licorDat, config.ionization)
+    calibDF = plot_humidity_dependent_calibration(config.humcalibfile, config.ionization)
 
     primaryionslist =
         isempty(config.primaryionslist) ?
