@@ -161,7 +161,7 @@ end
 Plot humidity-dependent calibration results and return calibration DataFrame.
 
 # Arguments
-- `humcalibfile::String`: Path to humidity calibration file (CSV).
+- `humcalibfile::String`: Path to humidity calibration file (txt).
 - `ionization::String`: Ionization method used (e.g., "NH4+").
 
 # Returns
@@ -296,7 +296,7 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, 
 
     #composition based filters
     undeffilter = BitVector(sum(mResfinal.MasslistCompositions; dims=1)[1, :] .== 0)
-
+    
     oxygen_number = findfirst(==("O"), mResfinal.MasslistElements)
 
     oneoxygenfilter = BitVector(mResfinal.MasslistCompositions[oxygen_number, :] .== 1)
@@ -305,29 +305,20 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, 
 
     println("found $(sum(undeffilter)) undefined masses, $(sum(oneoxygenfilter)) masses with 1 oxygen atom, and $(sum(twoplusoxygenfilter)) masses with >=2 oxygen atoms")
     
-    #hexanone-primary-ion factor
+    #hexanone-primary-ion factor #why not the sum of this?
     f_hex = CalF.applyFunction(summedPIs, hexVSpis_params[1]; functiontype = hexVSpis_params[3][1])
 
     #dry / kinetic limit calibration for undef and >=2 O
     println("calibrating all compounds with >2 oxygen atoms and undefined ones with reference $(refName) dry.")
-    
     dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .=
         f_hex .*
-        CalF.applyFunction(
-            zeros(length(mResfinal.Times)),
-            refparams;
-            functiontype = "double exponential"
-        )
+        CalF.applyFunction(zeros(length(mResfinal.Times)), refparams; functiontype = "double exponential")
 
     #humid / equilibrium calibration for 1 O
     println("calibrating all compounds with 1 oxygen atom humidity-dependent with reference $(refName)")
     dcps_per_ppb[:, oneoxygenfilter] .=
         f_hex .*
-        CalF.applyFunction(
-            CalF.applyFunction(licor_final, humparams[1]; functiontype = humparams[3][1]),
-            refparams;
-            functiontype = "double exponential"
-        )
+        CalF.applyFunction(CalF.applyFunction(licor_final, humparams[1]; functiontype = humparams[3][1]), refparams; functiontype = "double exponential")
 
     indices = Int[]
 
@@ -337,7 +328,7 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, 
  =#
     for row in eachrow(calibDF)
         params = row[[:p1, :p2, :p3, :p4, :p5]]
-        index = findfirst(isapprox.(mResfinal.MasslistMasses, row.Mass; atol=1e-4))
+        index = findfirst(isapprox.(mResfinal.MasslistMasses, row.Mass; atol=0.0001))
 
         if index isa Int
             dcps_per_ppb[:, index] =
@@ -351,7 +342,7 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, 
     return dcps_per_ppb, indices
 end
 #what I changed: remove frostpoint dependency, use only licor instead. use humidity dependant calibration for 1 oxygen and kinetic limit calibration for 2+ oxygen.
-#TO DO: don't show 0 oxygen. --> later?
+#TO DO: don't show 0 oxygen. --> zero ox filter, plot as zero ppb?
 
 """
     plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp)
@@ -396,7 +387,6 @@ Export calibrated traces for masses with exactly one nitrogen and more than one 
 # Arguments
 - `mResfinal::struct`: Measurement results containing mass list and time points.
 - `dcps_per_ppb::Matrix`: Calibration traces in dcps per ppb for all compounds.
-- `indices::Vector{Int}`: Indices of calibrated compounds.
 - `ionization::String`: Ionization method used (e.g., "NH4+").
 - `HeaderForExportDict::Dict{String,Any}`: Dictionary containing header information for export.
 - `resultfp::String`: File path to save the exported CSV file.
@@ -404,7 +394,7 @@ Export calibrated traces for masses with exactly one nitrogen and more than one 
 # Saves
 - Exported calibrated traces as a CSV file.
 """
-function export_calibrated_traces(mResfinal, dcps_per_ppb, indices, ionization, HeaderForExportDict, resultfp)
+function export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderForExportDict, resultfp)
 
     #filter for masses with at least one carbon
     filterCnr = mResfinal.MasslistCompositions[findfirst(mResfinal.MasslistElements .== "C"), :] .>= 1
@@ -503,7 +493,7 @@ function calibrate_traces_main(config::CalibrationConfig)
     plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, config.resultfp)
 
     if config.exportTraces
-        export_calibrated_traces(mResfinal, dcps_per_ppb, indices, config.ionization, config.HeaderForExportDict, config.resultfp)
+        export_calibrated_traces(mResfinal, dcps_per_ppb, config.ionization, config.HeaderForExportDict, config.resultfp)
     end
 end
 
