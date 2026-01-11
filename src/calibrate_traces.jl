@@ -144,7 +144,7 @@ Load Licor humidity data from text files in the specified directory.
 - `dir_licor_data::String`: Directory path containing Licor data files.
 
 # Returns
-- `licorDat::DataFrame`: DataFrame containing loaded Licor humidity data.
+- `licorDat::DataFrame`: DataFrame containing loaded Licor humidity data (datetime, H2O_mmolpermol).
 """
 function load_licor_data(dir_licor_data::String)
     return ImpF.createLicorData_fromFiles(dir_licor_data;
@@ -261,12 +261,14 @@ Return interpolated Licor humidity data to match the time points of the measurem
 function interpolate_licor_to_ptr_time(mResfinal, licorDat)
     return IntpF.sortSelectAverageSmoothInterpolate(
         mResfinal.Times,
-        licorDat.time,
-        licorDat.value;
+        licorDat.datetime,
+        licorDat.H2O_mmolpermol,
         returnSTdev = false,
         selectY = [-Inf, Inf] # option to get rid of outliers via the kwarg 'selectY' (use wisely) #[-21, 5]
     )
-    end
+end
+
+
 
 """
     build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, calibDF, hexVSpis_params, refName)
@@ -286,9 +288,9 @@ Build calibration traces for all compounds based on humidity-dependent and dry c
 - `dcps_per_ppb::Matrix`: Calibration traces in dcps per ppb for all compounds.
 - `indices::Vector{Int}`: Indices of calibrated compounds.
 """
-function build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, calibDF, hexVSpis_params, refName)
+function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, hexVSpis_params, refName)
 
-    #initialize calibration traces
+    #initialize calibration traces matrix with zeros
     dcps_per_ppb = zeros(length(mResfinal.Times), length(mResfinal.MasslistMasses))
 
     fref = findfirst(calibDF[!, "Sumformula"] .== refName)
@@ -296,18 +298,16 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, 
 
     #composition based filters
     undeffilter = BitVector(sum(mResfinal.MasslistCompositions; dims=1)[1, :] .== 0)
-    
     oxygen_number = findfirst(==("O"), mResfinal.MasslistElements)
-
     oneoxygenfilter = BitVector(mResfinal.MasslistCompositions[oxygen_number, :] .== 1)
-
     twoplusoxygenfilter = BitVector(mResfinal.MasslistCompositions[oxygen_number, :] .>= 2)
 
     println("found $(sum(undeffilter)) undefined masses, $(sum(oneoxygenfilter)) masses with 1 oxygen atom, and $(sum(twoplusoxygenfilter)) masses with >=2 oxygen atoms")
     
-    #hexanone-primary-ion factor #why not the sum of this?
+    #Hexanone dry sensitivity [cps/ppb] vs primary ion cps
     f_hex = CalF.applyFunction(summedPIs, hexVSpis_params[1]; functiontype = hexVSpis_params[3][1])
 
+    #multiply f_hex with wet sensitivity of different masses, relative to dry Hexanone
     #dry / kinetic limit calibration for undef and >=2 O
     println("calibrating all compounds with >2 oxygen atoms and undefined ones with reference $(refName) dry.")
     dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .=
@@ -318,7 +318,7 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, 
     println("calibrating all compounds with 1 oxygen atom humidity-dependent with reference $(refName)")
     dcps_per_ppb[:, oneoxygenfilter] .=
         f_hex .*
-        CalF.applyFunction(CalF.applyFunction(licor_final, humparams[1]; functiontype = humparams[3][1]), refparams; functiontype = "double exponential")
+        CalF.applyFunction(licor_final, refparams; functiontype = "double exponential")
 
     indices = Int[]
 
@@ -342,7 +342,7 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, 
     return dcps_per_ppb, indices
 end
 #what I changed: remove frostpoint dependency, use only licor instead. use humidity dependant calibration for 1 oxygen and kinetic limit calibration for 2+ oxygen.
-#TO DO: don't show 0 oxygen. --> zero ox filter, plot as zero ppb?
+#compounds with 0 oxygen are ignored (zero sensitivity)
 
 """
     plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp)
@@ -483,12 +483,12 @@ function calibrate_traces_main(config::CalibrationConfig)
             config.primaryionslist
 
     mResfinal, mResfinal_PIs = load_and_merge_results(config.resultfiles, primaryionslist)
-
+    
     summedPIs = compute_summed_primary_ions(mResfinal_PIs)
 
     licor_final = interpolate_licor_to_ptr_time(mResfinal, licorDat)
 
-    dcps_per_ppb, indices = build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, calibDF, hexVSpis_params, config.refName)
+    dcps_per_ppb, indices = build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, hexVSpis_params, config.refName)
 
     plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, config.resultfp)
 
