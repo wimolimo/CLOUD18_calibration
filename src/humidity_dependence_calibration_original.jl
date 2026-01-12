@@ -2,7 +2,22 @@
 using HDF5
 #import PyCall
 #pygui(:tk) # :tk, :gtk3, :gtk, :qt5, :qt4, :qt, or :wx
-ENV["MPLBACKEND"] = "tkagg"
+
+using PyCall
+matplotlib = pyimport("matplotlib")
+println("backend = ", matplotlib.get_backend())
+println("PyCall.python = ", PyCall.python)
+try
+    pyimport("tkinter"); println("tkinter: OK")
+catch e
+    println("tkinter: MISSING: ", e)
+end
+try
+    pyimport("PyQt5"); println("PyQt5: OK")
+catch
+    println("PyQt5: MISSING")
+end
+
 using PyPlot
 using Dates
 using CSV
@@ -23,9 +38,11 @@ file = joinpath(fp, "_result.hdf5")
 plotStart = DateTime(2000, 1, 1, 0, 0, 0)
 plotEnd = DateTime(3000, 1, 1, 0, 0, 0)
 
-humidityLimits = [0.0, 1.0]  # define interactively later
-bgTimes = [plotStart, plotEnd]
-signalTimes = [plotStart, plotEnd] 
+println("Measurement time range: ", plotStart, " — ", plotEnd)
+
+#humidityLimits = [0.0, 0.5]  # define interactively later
+#bgTimes = [plotStart, plotEnd]
+#signalTimes = [plotStart, plotEnd] 
 
 ions2plot = "NH4+" # "NH4+" # "all", "NH4+", "H+"
 #STD_masses_dict = massLibrary.CLOUD_greenSTD_masses # STD1
@@ -56,7 +73,7 @@ elseif ions2plot == "all"
     ion = "H+"
 end
 
-#massesToPlot = massLibrary.FullPrimaryionslist_NH4soft
+# massesToPlot = massLibrary.FullPrimaryionslist_NH4soft
 
 
 
@@ -74,6 +91,31 @@ tracesFig, tracesAx, measResult = PlotFunctions.plotTracesFromHDF5(file, massesT
     timeFrame2plot=(plotStart, plotEnd),
     ion=ion
 )
+
+################################################
+# Debug / ensure figure is visible and updated
+try
+    PyPlot.ion()                     # interactive on
+    fig = isnothing(tracesFig) ? PyPlot.gcf() : tracesFig
+    println("figure type: ", typeof(fig))
+    println("axes count: ", length(fig[:axes]))
+    for (i, ax) in enumerate(fig[:axes])
+        println(" axis ", i, " lines: ", length(ax[:lines]))
+        # recompute limits and redraw
+        try
+            ax[:relim]()             # recompute data limits
+            ax[:autoscale_view]()    # autoscale to data
+        catch
+        end
+    end
+    # request draw and show blocking so interactive keypresses work
+    fig[:canvas][:draw_idle]()       # schedule a draw
+    PyPlot.show(block=true)          # block until window closed (allows keypress)
+catch e
+    @warn "interactive display failed: $e"
+end
+############################################
+
 savefig("$(fp)Traces_$(ions2plot).png")
 
 humDat = PlotFunctions.load_plotLicorData(humfile; ax=tracesAx, header=2)
@@ -84,13 +126,13 @@ if !isdefined(Main, :bgTimes)
     IFIG = PlotFunctions.InteractivePlot(file, tracesAx)
     (humidityLimits, bgTimes, signalTimes) = CalF.humCal_getDatalimitsFromPlot(IFIG)
 end
-"""
+
 if (length(IFIG.deleteXlim) > 0) && (length(IFIG.deleteXlim) % 2 == 0)
     for i in collect(1:2:length(IFIG.deleteXlim))
         measResult.Traces[IFIG.deleteXlim[i].<=measResult.Times.<=IFIG.deleteXlim[i+1], :] .= NaN
     end
 end
-"""
+
 #######################################
 # calculate and plot calibration points
 #######################################
@@ -115,6 +157,10 @@ hum4plot = collect(0:0.2:12)
 fitParams = []
 fitParamErrors = []
 colornames = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan", "tab:blue", "tab:orange", "tab:green", "tab:red"]
+
+println(keysToPlot)
+println("n_x = ", length(humidities))
+println("n_y = ", size(calibData))
 
 if length(keysToPlot) == length(measResult.MasslistMasses)
     for (i, m) in enumerate(measResult.MasslistMasses)
