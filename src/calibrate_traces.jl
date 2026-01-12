@@ -1,4 +1,3 @@
-#main TO Do: find out what to do about humparams and cloudhum, where to get it from.
 module CalibrateTraces
 
 export calibrate_traces_main#, CalibrationConfig
@@ -67,14 +66,15 @@ dir_CLOUD18 = joinpath(@__DIR__, "..", "..")
 dir_calib_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Calibration")
 dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor")
 
-#dry calibration file
-drycalibsfile = joinpath(dir_calib_data, "2025-11-25 08h28m48_1ppb_std_brown.h5") #FILENAME ANPASSEN!!! WIE SIEHT DIESE FILE AUS???
+#dry calibration file # this ican be either the processed file of the dry calibrations or the CSV file containing the exported hexanone vs primary ion parameters for loading them:
+drycalibsfile = joinpath(dir_calib_data, "?", "results", "_result.hdf5") #FILENAME ANPASSEN!!! WIE SIEHT DIESE FILE AUS???
+#ERROR: file does not contain "AvgStickCpsTimes", needed in ResultFileFunctions.loadResults
 
 #humidity dependent calibration file
-humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "_result.hdf5") #humcalibfp; should be txt!!!! #from humidity dependence calibration script???
+humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "fitParameters_relative.txt") #humcalibfp
 
 #file to be calibrated at once with same mass list
-resultfp = joinpath(dir_calib_data, "Test") #change result filepath to data that is analyzed, results of this script are also saved here
+resultfp = joinpath(dir_calib_data, "Test") #change result filepath to data that is analyzed #results of this script are also saved here
 resultfiles = ["$(resultfp)/results/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
 
 ionization = "NH4+" # "NH4+", "H+"...
@@ -95,18 +95,8 @@ HeaderForExportDict = Dict(
         "nrrows_addcomment"=>4
         )
 
-#= humparams is not defined yet
-humparams=(Float64[],Float64[]," ") from CalF.getInletCLOUDHumidityRelation
-humparams = fitParameters(cloudhumfinal, licorfinal; functiontype="exponential")
-cloudhumfinal = IntpF.sortSelectAverageSmoothInterpolate(time2interpolate2, cloudhum.time, cloudhum[!,cloudhumLabel]; returnSTdev=false, selectY=selectY.cloud)
-licorfinal = IntpF.sortSelectAverageSmoothInterpolate(time2interpolate2, licorDat.datetime, licorDat.H2O_mmolpermol; returnSTdev=false, selectY=selectY.inlet)
-cloudhum = CSV.read(frostpointfile, DataFrame; dateformat=frostpointDatetimeFormat)
-    if Year(cloudhum.time[1]) < Year(999)
-        cloudhum.time = cloudhum.time .+ Year(2000)
-    end =#
 
-### FUNCTIONS
-
+### FUNCTIONS ###
 """
     load_hexVSpis_params(drycalibsfile::String)
 
@@ -156,7 +146,7 @@ end
 
 
 """
-    plot_humidity_dependent_calibration(humcalibfile, humparams, licorDat, ionization)
+    plot_humidity_dependent_calibration(humcalibfile, ionization)
     
 Plot humidity-dependent calibration results and return calibration DataFrame.
 
@@ -175,15 +165,14 @@ function plot_humidity_dependent_calibration(humcalibfile, ionization)
 
     #instead of CalF.plot_humdep_fromCalibParameters:
     hum4plot=collect(0:0.2:12)
-    humdepcalibRelationship="double exponential"
     ionization=ionization
-    
+
     plt = plot()
     for (name, mass) in zip(calibDF[!, "Sumformula"], calibDF[!, "Mass"])
         f = findfirst(calibDF[!, "Sumformula"] .== name)
         # get all params:
         params = calibDF[f, [:p1, :p2, :p3, :p4, :p5]]
-        humdep = applyFunction(hum4plot,params;functiontype=humdepcalibRelationship)
+        humdep = applyFunction(hum4plot,params;functiontype=humdepcalibRelationship="double exponential")
         plot(hum4plot, humdep, label=string(round(mass, digits=3), " - ", name))
     end
     xlabel!(plt, "absolute humidity [mmol mol⁻¹]")
@@ -198,6 +187,7 @@ function plot_humidity_dependent_calibration(humcalibfile, ionization)
     return calibDF
 end
 #should it also return the plot? or just save it?
+
 
 """
     load_and_merge_results(resultfiles, primaryionslist)
@@ -227,7 +217,6 @@ function load_and_merge_results(resultfiles, primaryionslist)
 end
 
 
-
 """
     compute_summed_primary_ions(mResfinal_PIs)
 
@@ -253,7 +242,7 @@ Return interpolated Licor humidity data to match the time points of the measurem
 
 # Arguments
 - `mResfinal::struct`: Measurement results containing time points.
-- `licorDat::DataFrame`: DataFrame containing Licor humidity data.
+- `licorDat::DataFrame`: DataFrame containing Licor humidity data (datetime, H2O_mmolpermol).
 
 # Returns
 - `licor_final::Vector`: Interpolated Licor humidity data aligned with measurement results time points. 
@@ -271,7 +260,7 @@ end
 
 
 """
-    build_calibration_traces(mResfinal, summedPIs, licor_final, humparams, calibDF, hexVSpis_params, refName)
+    build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, hexVSpis_params, refName)
 
 Build calibration traces for all compounds based on humidity-dependent and dry calibration.
 
@@ -279,7 +268,6 @@ Build calibration traces for all compounds based on humidity-dependent and dry c
 - `mResfinal::struct`: Measurement results containing mass list and time points.
 - `summedPIs::Vector`: Summed primary ion intensities.
 - `licor_final::Vector`: Interpolated Licor humidity data aligned with measurement results time points.
-- `humparams::Vector`: Humidity parameters for calibration.
 - `calibDF::DataFrame`: Calibration data frame.
 - `hexVSpis_params::Vector`: Hexanone vs primary ion parameters.
 - `refName::String`: Reference compound name.
@@ -315,10 +303,10 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, he
         CalF.applyFunction(zeros(length(mResfinal.Times)), refparams; functiontype = "double exponential")
 
     #humid / equilibrium calibration for 1 O
-    println("calibrating all compounds with 1 oxygen atom humidity-dependent with reference $(refName)")
+    println("calibrating all compounds with 1 oxygen atom humidity-dependent with reference $(refName).")
     dcps_per_ppb[:, oneoxygenfilter] .=
         f_hex .*
-        CalF.applyFunction(licor_final, refparams; functiontype = "double exponential")
+        CalF.applyFunction(licor_final, refparams; functiontype = "double exponential") #use licor_final instead of CalF.applyFunction(fpfinal, humparams[1]; functiontype = humparams[3][1])
 
     indices = Int[]
 
@@ -333,7 +321,7 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, he
         if index isa Int
             dcps_per_ppb[:, index] =
                 f_hex .*
-                CalF.applyFunction(CalF.applyFunction(licor_final, humparams[1]; functiontype = humparams[3][1]), params; functiontype = "double exponential")
+                CalF.applyFunction(licor_final, params; functiontype = "double exponential") 
 
             push!(indices, index)
         end
