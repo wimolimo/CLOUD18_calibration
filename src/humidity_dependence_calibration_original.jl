@@ -1,23 +1,8 @@
-
 using HDF5
 #import PyCall
 #pygui(:tk) # :tk, :gtk3, :gtk, :qt5, :qt4, :qt, or :wx
 
 using PyCall
-matplotlib = pyimport("matplotlib")
-println("backend = ", matplotlib.get_backend())
-println("PyCall.python = ", PyCall.python)
-try
-    pyimport("tkinter"); println("tkinter: OK")
-catch e
-    println("tkinter: MISSING: ", e)
-end
-try
-    pyimport("PyQt5"); println("PyQt5: OK")
-catch
-    println("PyQt5: MISSING")
-end
-
 using PyPlot
 using Dates
 using CSV
@@ -34,9 +19,8 @@ humfile = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Licor", "2025-11-21.tx
 
 file = joinpath(fp, "_result.hdf5")
 
-
-plotStart = DateTime(2000, 1, 1, 0, 0, 0)
-plotEnd = DateTime(3000, 1, 1, 0, 0, 0)
+plotStart = DateTime(2025,11,23,22,35,16) # DateTime(2000, 1, 1, 0, 0, 0)
+plotEnd = DateTime(2025,11,23,23,56,40) # DateTime(3000, 1, 1, 0, 0, 0)
 
 println("Measurement time range: ", plotStart, " — ", plotEnd)
 
@@ -92,50 +76,28 @@ tracesFig, tracesAx, measResult = PlotFunctions.plotTracesFromHDF5(file, massesT
     ion=ion
 )
 
-################################################
-# Debug / ensure figure is visible and updated
-try
-    PyPlot.ion()                     # interactive on
-    fig = isnothing(tracesFig) ? PyPlot.gcf() : tracesFig
-    println("figure type: ", typeof(fig))
-    println("axes count: ", length(fig[:axes]))
-    for (i, ax) in enumerate(fig[:axes])
-        println(" axis ", i, " lines: ", length(ax[:lines]))
-        # recompute limits and redraw
-        try
-            ax[:relim]()             # recompute data limits
-            ax[:autoscale_view]()    # autoscale to data
-        catch
-        end
-    end
-    # request draw and show blocking so interactive keypresses work
-    fig[:canvas][:draw_idle]()       # schedule a draw
-    PyPlot.show(block=true)          # block until window closed (allows keypress)
-catch e
-    @warn "interactive display failed: $e"
-end
-############################################
-
-savefig("$(fp)Traces_$(ions2plot).png")
+# ResultFileFunctions.loadResults(file) # file mal angucken
 
 humDat = PlotFunctions.load_plotLicorData(humfile; ax=tracesAx, header=2)
 tracesFig.tight_layout()
 
 if !isdefined(Main, :bgTimes)
-    println("do the next part interactively:\n")
+    println("\ndo the next part interactively:")
     IFIG = PlotFunctions.InteractivePlot(file, tracesAx)
     (humidityLimits, bgTimes, signalTimes) = CalF.humCal_getDatalimitsFromPlot(IFIG)
 end
 
-if (length(IFIG.deleteXlim) > 0) && (length(IFIG.deleteXlim) % 2 == 0)
-    for i in collect(1:2:length(IFIG.deleteXlim))
-        measResult.Traces[IFIG.deleteXlim[i].<=measResult.Times.<=IFIG.deleteXlim[i+1], :] .= NaN
-    end
-end
+println("Using bgTimes: ", bgTimes)
+println("Using signalTimes: ", signalTimes)
+println("Using humidityLimits: ", humidityLimits)
 
 #######################################
 # calculate and plot calibration points
 #######################################
+
+println("bgTimes: ", bgTimes)
+println("signalTimes: ", signalTimes[1], " — ", signalTimes[2])
+println("humidityLimits: ", humidityLimits)
 
 (calibData, calibData_std, humidities) = CalF.humcal_getHumidityDependentSensitivity(measResult, humDat;
     hums=humidityLimits,
