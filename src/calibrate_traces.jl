@@ -67,10 +67,9 @@ dir_calib_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Calibration")
 dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor")
 
 #dry calibration file # this ican be either the processed file of the dry calibrations or the CSV file containing the exported hexanone vs primary ion parameters for loading them:
-drycalibsfile = joinpath(dir_calib_data, "?", "results", "_result.hdf5") #FILENAME ANPASSEN!!! WIE SIEHT DIESE FILE AUS???
-#ERROR: file does not contain "AvgStickCpsTimes", needed in ResultFileFunctions.loadResults
+drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5")
 
-#humidity dependent calibration file
+#humidity dependent calibration file, from humidity_dependence_calibration.jl
 humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "fitParameters_relative.txt") #humcalibfp
 
 #file to be calibrated at once with same mass list
@@ -438,6 +437,9 @@ end
 ################################
 # Main Script
 ################################
+
+config = CalibrationConfig(dir_licor_data, hexVSpis_params, licorDat, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, primaryionslist, refMass, refName, exportTraces, HeaderForExportDict)
+
 """
     calibrate_traces_main(config::CalibrationConfig)
 
