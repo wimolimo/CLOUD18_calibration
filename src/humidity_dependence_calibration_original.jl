@@ -15,22 +15,23 @@ import TOFTracer2.ExportFunctions as ExpF
 import TOFTracer2.ImportFunctions as ImpF
 
 fp = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "Humidity-dependent_std", "results")
-humfile = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Licor", "2025-11-21.txt")
-
 file = joinpath(fp, "_result.hdf5")
 
-plotStart = DateTime(2025,11,23,22,35,16) # DateTime(2000, 1, 1, 0, 0, 0)
-plotEnd = DateTime(2025,11,23,23,56,40) # DateTime(3000, 1, 1, 0, 0, 0)
+humfile = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Licor", "2025-11-21.txt")
+
+bg_fp = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "humidity_dependent_BG", "results")
+bg_file = joinpath(bg_fp, "_result.hdf5")
+
+plotStart = DateTime(2000, 1, 1, 0, 0, 0)
+plotEnd = DateTime(3000, 1, 1, 0, 0, 0)
 
 println("Measurement time range: ", plotStart, " — ", plotEnd)
 
-#humidityLimits = [0.0, 0.5]  # define interactively later
-#bgTimes = [plotStart, plotEnd]
-#signalTimes = [plotStart, plotEnd] 
-
 ions2plot = "NH4+" # "NH4+" # "all", "NH4+", "H+"
 #STD_masses_dict = massLibrary.CLOUD_greenSTD_masses # STD1
-STD_masses_dict = massLibrary.CLOUD_brownSTD_masses # STD2
+STD_masses_dict = massLibrary.CLOUD_brownSTD_masses # 
+# ["Acetic Acid", "Hexanone", "Acetaldehyde", "Apinene", "Acetonitrile", "Benzene", "Octanone",
+# "Xylene", "Hexenal", "MVK", "Toluene", "DMS", "Acetone"]
 
 ####################################
 # select masses and ions to analyze
@@ -59,43 +60,50 @@ end
 
 # massesToPlot = massLibrary.FullPrimaryionslist_NH4soft
 
-
-
 ##################################
 # plot raw data and select filters
 ##################################
 
-tracesFig, tracesAx, measResult = PlotFunctions.plotTracesFromHDF5(file, massesToPlot;
-    plotHighTimeRes=false,
-    smoothing=10,
-    backgroundSubstractionMode=0,
-    timedelay=Dates.Hour(0),
-    isobarToPlot=0,
-    plotsymbol=".-",
-    timeFrame2plot=(plotStart, plotEnd),
-    ion=ion
-)
+(tracesFig, tracesAx, measResult) = PlotFunctions.plotTracesFromHDF5(file, massesToPlot;
+    plotHighTimeRes = false,
+    smoothing = 1,
+    timeFrame2plot = (plotStart, plotEnd)
+    )
 
-# ResultFileFunctions.loadResults(file) # file mal angucken
 
+# show bg data as well
+(tracesFig_bg, tracesAx_bg, measResult_bg) = PlotFunctions.plotTracesFromHDF5(bg_file, massesToPlot;
+    plotHighTimeRes = false,
+    smoothing = 1,
+    timeFrame2plot = (plotStart, plotEnd)
+
+    )
+
+# plot licor data into same figure
 humDat = PlotFunctions.load_plotLicorData(humfile; ax=tracesAx, header=2)
 tracesFig.tight_layout()
 
+humDat_bg = PlotFunctions.load_plotLicorData(humfile; ax=tracesAx_bg, header=2)
+tracesFig_bg.tight_layout()
+
+# bgTimes=[plotStart, plotEnd]
+# signalTimes=[plotStart, plotEnd]
+# humidityLimits=[0.0, 20] # mmol mol⁻¹ 
+
+# not doing it interactively for now
 if !isdefined(Main, :bgTimes)
     println("\ndo the next part interactively:")
     IFIG = PlotFunctions.InteractivePlot(file, tracesAx)
     (humidityLimits, bgTimes, signalTimes) = CalF.humCal_getDatalimitsFromPlot(IFIG)
 end
 
-println("Using bgTimes: ", bgTimes)
-println("Using signalTimes: ", signalTimes)
-println("Using humidityLimits: ", humidityLimits)
+
 
 #######################################
 # calculate and plot calibration points
 #######################################
 
-println("bgTimes: ", bgTimes)
+println("bgTimes: ", bgTimes[1], " — ", bgTimes[2])
 println("signalTimes: ", signalTimes[1], " — ", signalTimes[2])
 println("humidityLimits: ", humidityLimits)
 
@@ -105,11 +113,14 @@ println("humidityLimits: ", humidityLimits)
     signaltimes=signalTimes,
     pptInInlet=1000)
 
-fig = figure(figsize=(14, 9))
+println("calibData: ", calibData)
+println("calibData_std: ", calibData_std)
+println("humidities: ", humidities)
+
+fig = figure(figsize=(10, 6))
 (calibFig, calibAx) = PlotFunctions.scatter_errorbar(fig, measResult, humidities, calibData, calibData_std; ion=ion)
 xlabel("absolute humidity [mmol mol⁻¹]")
 ylabel("sensitivity [dcps ppt⁻¹]")
-
 
 ################################
 # plot and export fit parameters
@@ -120,9 +131,11 @@ fitParams = []
 fitParamErrors = []
 colornames = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan", "tab:blue", "tab:orange", "tab:green", "tab:red"]
 
-println(keysToPlot)
+#println(keysToPlot)
 println("n_x = ", length(humidities))
 println("n_y = ", size(calibData))
+println("size of keystoplot: ", size(keysToPlot))
+println("size of Masslist: ", size(measResult.MasslistMasses))
 
 if length(keysToPlot) == length(measResult.MasslistMasses)
     for (i, m) in enumerate(measResult.MasslistMasses)
@@ -135,6 +148,7 @@ if length(keysToPlot) == length(measResult.MasslistMasses)
     end
 else
     for (i, m) in enumerate(measResult.MasslistMasses)
+        println("Fitting mass: ", m)
         (param, stderror, fitlabel) = CalF.fitParameters_DoubleExponential(humidities, calibData[:, i])
         push!(fitParams, param)
         push!(fitParamErrors, stderror)
@@ -154,11 +168,13 @@ fitParamErrors2Export = hvcat(length(measResult.MasslistMasses), (fitParamErrors
 
 ExpF.exportFitParameters("$(fp)fitParameters.txt", fitParams2Export, fitParamErrors2Export,
     measResult.MasslistMasses, measResult.MasslistCompositions;
-    fitfunction="sensitivity(AH) = p1 * exp.(-p2*AH) .+ p3*exp.(-p4*AH) .+ p5")
+    fitfunction="sensitivity(AH) = p1 * exp.(-p2*AH) .+ p3*exp.(-p4*AH) .+ p5") #fit function as value?
 
 ##########################################################################
 # correct fit parameters relative to Hexanone and save these also to file
 ##########################################################################
+
+#=
 
 if round(massLibrary.HEXANONE_nh4[1],digits=3) in round.(measResult.MasslistMasses,digits=3)
     fitParamsHex = fitParams2Export[:, isapprox.(measResult.MasslistMasses, massLibrary.HEXANONE_nh4[1], atol=0.0001)]
@@ -171,3 +187,5 @@ if round(massLibrary.HEXANONE_nh4[1],digits=3) in round.(measResult.MasslistMass
         measResult.MasslistMasses, measResult.MasslistCompositions;
         fitfunction="relative_sensitivity_to_Hexanone(AH) = p1 * exp.(-p2*AH) .+ p3*exp.(-p4*AH) .+ p5")
 end
+
+=#
