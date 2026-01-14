@@ -1,10 +1,11 @@
-using CLOUD18_calibration
-
+"""
+    Entry script to run the CLOUD18 trace calibration, containing all needed parameters and filepaths.
+"""
+using .CLOUD18_calibration
 
 #################################
 # Define parameters for calibration
 #################################
-
 
 """
     struct CalibrationConfig
@@ -48,7 +49,7 @@ dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor")
 drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5")
 
 #humidity dependent calibration file, from humidity_dependence_calibration.jl
-humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "fitParameters_relative.txt") #humcalibfp
+# humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "fitParameters_relative.txt") #humcalibfp
 
 #file to be calibrated at once with same mass list
 resultfp = joinpath(dir_calib_data, "Test") #change result filepath to data that is analyzed #results of this script are also saved here
@@ -71,18 +72,21 @@ HeaderForExportDict = Dict(
         "threshold"=>0,
         "nrrows_addcomment"=>4
         )
-        
-config = CalibrationConfig(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, primaryionslist, refMass, refName, exportTraces, HeaderForExportDict)
+      
 
 
 
 
-
-
-
+#########################
+# Run calibration steps
+#########################
 
 # 1. Run humidity dependence calibration
-
+CLOUD18_calibration.HumidityDependence.humidity_dependence_calibration_main() #ANPASSEN
+humcalibfile = humcalibfp #from humidity dependence calibration
 
 # 2. Run calibrate_traces
+config = CalibrationConfig(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, primaryionslist, refMass, refName, exportTraces, HeaderForExportDict)
 CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(config)
+
+# 3. Run Inlet Loss Correction
