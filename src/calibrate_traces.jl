@@ -1,6 +1,6 @@
 module CalibrateTraces
 
-export calibrate_traces_main#, CalibrationConfig
+export calibrate_traces_main, CalibrationConfig
 
 #using ... from ...
 using HDF5
@@ -21,6 +21,41 @@ import TOFTracer2.ResultFileFunctions
 import TOFTracer2.PlotFunctions
 import TOFTracer2.MasslistFunctions
 import TOFTracer2.massLibrary
+
+### STRUCTS ###
+
+"""
+    CalibrationConfig
+
+Struct to hold configuration parameters for trace calibration.
+
+# Fields
+- `dir_licor_data::String`: Directory path containing Licor data files.
+- `humcalibfile::String`: Path to humidity calibration file (CSV).
+- `drycalibsfile::String`: Path to dry calibration file (HDF5 or CSV).
+- `resultfp::String`: File path to save the results.
+- `resultfiles::Vector{String}`: List of paths to result files (HDF5).
+- `ionization::String`: Ionization method used (e.g., "NH4+").
+- `primaryionslist::Vector{Float64}`: List of primary ion masses to load.
+- `refMass::Float64`: Mass of the reference compound.
+- `refName::String`: Name of the reference compound.
+- `exportTraces::Bool`: Flag to indicate whether to export calibrated traces.
+- `HeaderForExportDict::Dict{String,Any}`: Dictionary containing header information for export.
+"""
+struct CalibrationConfig
+    dir_licor_data::String
+    humcalibfile::String
+    drycalibsfile::String
+    resultfp::String
+    resultfiles::Vector{String}
+    ionization::String
+    primaryionslist::Vector{Float64}
+    refMass::Float64
+    refName::String
+    exportTraces::Bool
+    HeaderForExportDict::Dict{String,Any}
+end
+
 
 ### FUNCTIONS ###
 """
@@ -382,14 +417,15 @@ Main function to calibrate measurement traces based on humidity-dependent and dr
 function calibrate_traces_main(config::CalibrationConfig)
 
     hexVSpis_params =
-        config.hexVSpis_params === nothing ?
-            load_hexVSpis_params(config.drycalibsfile) :
-            config.hexVSpis_params
+#        !isdefined(hexVSpis_params) ?
+            load_hexVSpis_params(config.drycalibsfile)
+#            :hexVSpis_params
 
     licorDat =
-        config.licorDat === nothing ?
-            load_licor_data(config.dir_licor_data) :
-            config.licorDat
+#        !isdefined(licorDat) ?
+            load_licor_data(config.dir_licor_data)
+#            :licorDat
+
 
     calibDF = plot_humidity_dependent_calibration(config.humcalibfile, config.ionization)
 

@@ -1,45 +1,12 @@
-"""
-    Entry script to run the CLOUD18 trace calibration, containing all needed parameters and filepaths.
-"""
-using .CLOUD18_calibration
+include("CLOUD18_calibration.jl")
+using CLOUD18_calibration: CalibrationConfig, calibrate_traces_main
+using TOFTracer2
+using TOFTracer2.MasslistFunctions
+using TOFTracer2: massLibrary
 
 #################################
 # Define parameters for calibration
 #################################
-
-"""
-    struct CalibrationConfig
-
-A struct to hold configuration parameters for trace calibration.
-
-#Arguments
-- `dir_licor_data::String`: Directory path containing Licor data files.
-- `hexVSpis_params`: Tuple containing hexanone vs. primary ion parameters.
-- `licorDat`: DataFrame containing Licor humidity data.
-- `humcalibfile::String`: Path to humidity calibration file (CSV).
-- `drycalibsfile::String`: Path to dry calibration file (HDF5 or CSV).
-- `resultfp::String`: File path to save the results.
-- `resultfiles::Vector{String}`: List of paths to result files that can be calibrated at the same time (HDF5).
-- `ionization::String`: Ionization method used (e.g., "NH4+").
-- `primaryionslist::Vector{Float64}`: List of primary ion masses to load.
-- `refMass::Float64`: Mass of the reference compound.
-- `refName::String`: Name of the reference compound.
-- `exportTraces::Bool`: Flag to indicate whether to export calibrated traces.
-- `HeaderForExportDict::Dict{String,Any}`: Dictionary containing information for export.
-"""
-struct CalibrationConfig
-    dir_licor_data::String
-    humcalibfile::String
-    drycalibsfile::String
-    resultfp::String
-    resultfiles::Vector{String}
-    ionization::String
-    primaryionslist::Vector{Float64}
-    refMass::Float64
-    refName::String
-    exportTraces::Bool
-    HeaderForExportDict::Dict{String,Any}
-end
 
 dir_CLOUD18 = joinpath(@__DIR__, "..", "..")
 dir_calib_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Calibration")
@@ -49,7 +16,7 @@ dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor")
 drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5")
 
 #humidity dependent calibration file, from humidity_dependence_calibration.jl
-# humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "fitParameters_relative.txt") #humcalibfp
+humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "fitParameters_relative.txt") #humcalibfp
 
 #file to be calibrated at once with same mass list
 resultfp = joinpath(dir_calib_data, "Test") #change result filepath to data that is analyzed #results of this script are also saved here
@@ -82,11 +49,11 @@ HeaderForExportDict = Dict(
 #########################
 
 # 1. Run humidity dependence calibration
-CLOUD18_calibration.HumidityDependence.humidity_dependence_calibration_main() #ANPASSEN
-humcalibfile = humcalibfp #from humidity dependence calibration
+#CLOUD18_calibration.HumidityDependence.humidity_dependence_calibration_main() #ANPASSEN
+#humcalibfile = humcalibfp #from humidity dependence calibration
 
 # 2. Run calibrate_traces
-config = CalibrationConfig(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, primaryionslist, refMass, refName, exportTraces, HeaderForExportDict)
+config = CLOUD18_calibration.CalibrateTraces.CalibrationConfig(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, primaryionslist, refMass, refName, exportTraces, HeaderForExportDict)
 CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(config)
 
 # 3. Run Inlet Loss Correction
