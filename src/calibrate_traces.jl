@@ -22,79 +22,6 @@ import TOFTracer2.PlotFunctions
 import TOFTracer2.MasslistFunctions
 import TOFTracer2.massLibrary
 
-################################
-# define relative filepaths of used data
-################################
-
-"""
-    struct CalibrationConfig
-
-A struct to hold configuration parameters for trace calibration.
-
-#Arguments
-- `dir_licor_data::String`: Directory path containing Licor data files.
-- `hexVSpis_params`: Tuple containing hexanone vs. primary ion parameters.
-- `licorDat`: DataFrame containing Licor humidity data.
-- `humcalibfile::String`: Path to humidity calibration file (CSV).
-- `drycalibsfile::String`: Path to dry calibration file (HDF5 or CSV).
-- `resultfp::String`: File path to save the results.
-- `resultfiles::Vector{String}`: List of paths to result files that can be calibrated at the same time (HDF5).
-- `ionization::String`: Ionization method used (e.g., "NH4+").
-- `primaryionslist::Vector{Float64}`: List of primary ion masses to load.
-- `refMass::Float64`: Mass of the reference compound.
-- `refName::String`: Name of the reference compound.
-- `exportTraces::Bool`: Flag to indicate whether to export calibrated traces.
-- `HeaderForExportDict::Dict{String,Any}`: Dictionary containing information for export.
-"""
-struct CalibrationConfig
-    dir_licor_data::String
-    hexVSpis_params
-    licorDat
-    humcalibfile::String
-    drycalibsfile::String
-    resultfp::String
-    resultfiles::Vector{String}
-    ionization::String
-    primaryionslist::Vector{Float64}
-    refMass::Float64
-    refName::String
-    exportTraces::Bool
-    HeaderForExportDict::Dict{String,Any}
-end
-
-dir_CLOUD18 = joinpath(@__DIR__, "..", "..")
-dir_calib_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Calibration")
-dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor")
-
-#dry calibration file # this ican be either the processed file of the dry calibrations or the CSV file containing the exported hexanone vs primary ion parameters for loading them:
-drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5")
-
-#humidity dependent calibration file, from humidity_dependence_calibration.jl
-humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "fitParameters_relative.txt") #humcalibfp
-
-#file to be calibrated at once with same mass list
-resultfp = joinpath(dir_calib_data, "Test") #change result filepath to data that is analyzed #results of this script are also saved here
-resultfiles = ["$(resultfp)/results/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
-
-ionization = "NH4+" # "NH4+", "H+"...
-primaryionslist = [] # leave empty -> default: adding all possible water and ammonium clusters
-
-refMass = massLibrary.HEXANONE_nh4[1] #mass of hexanone + NH4+ from julia package manualMassLibrary.jl
-refName = TOFTracer2.MasslistFunctions.sumFormulaStringFromCompositionArray(massLibrary.HEXANONE_nh4[4]; ion = "")
-
-exportTraces = true # if true, check HeaderForExportDict below:
-HeaderForExportDict = Dict(
-        "title"=>"Exampletitle...",
-        "level"=>2,
-        "version"=>"01",
-        "authorname_mail"=>"Ruth, Clea clea.ruth@student.uibk.ac.at",
-        "units"=>"ppt",
-        "addcomment"=>"The data have been humidity-depently calibrated with Hexanone as reference (Onr=1), compounds with Onr>1 are calibrated with kinetic limit. All traces have been corrected to the duty-cycle-corrected primary ion trace. Uncertainty roughly factor 3. Not transmission-corrected yet.\n",
-        "threshold"=>0,
-        "nrrows_addcomment"=>4
-        )
-
-
 ### FUNCTIONS ###
 """
     load_hexVSpis_params(drycalibsfile::String)
@@ -114,7 +41,7 @@ function load_hexVSpis_params(drycalibsfile::String)
     if HDF5.ishdf5(drycalibsfile)
         hexVSpis_params = CalF.dryCal_selectPIandRefDataFromIFIG(drycalibsfile)
         hexVSpis_params2export = vcat(hexVSpis_params[3], ["parameters" "errors"], hcat(hexVSpis_params[1], hexVSpis_params[2]))
-        writedlm("$(dirname(drycalibsfile))Hexanone_VS_PIs_params.csv", hexVSpis_params2export) #save parameters for later use?
+        CSV.write("$(dirname(drycalibsfile))Hexanone_VS_PIs_params.csv", DataFrame(hexVSpis_params2export, :auto)) #save parameters for later use?
     else
         a = CSV.read(drycalibsfile, DataFrame, header=[2])
         b = CSV.read(drycalibsfile, DataFrame; footerskip=3, header=false)
@@ -228,7 +155,7 @@ Returns the summed primary ions from the measurement results.
 - `summedPIs::Vector`: Summed primary ion intensities.
 """
 function compute_summed_primary_ions(mResfinal_PIs)
-    summedPIs = mResfinal_PIs.Traces .* sqrt.(100 ./ mResfinal_PIs.MasslistMasses)
+    summedPIs = mResfinal_PIs.Traces .* sqrt.(100 ./ mResfinal_PIs.MasslistMasses) #Traces is matrix times vs PI
     summedPIs[summedPIs .<= 0] .= 0
     return summedPIs
 end
@@ -291,21 +218,21 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, he
 
     println("found $(sum(undeffilter)) undefined masses, $(sum(oneoxygenfilter)) masses with 1 oxygen atom, and $(sum(twoplusoxygenfilter)) masses with >=2 oxygen atoms")
     
-    #Hexanone dry sensitivity [cps/ppb] vs primary ion cps
+    #Hexanone dry sensitivity [cps/ppb] vs primary ion cps, calculated for all time points
     f_hex = CalF.applyFunction(summedPIs, hexVSpis_params[1]; functiontype = hexVSpis_params[3][1])
 
     #multiply f_hex with wet sensitivity of different masses, relative to dry Hexanone
     #dry / kinetic limit calibration for undef and >=2 O
     println("calibrating all compounds with >2 oxygen atoms and undefined ones with reference $(refName) dry.")
-    dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .=
+    dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .= #vector of length Times 
         f_hex .*
-        CalF.applyFunction(zeros(length(mResfinal.Times)), refparams; functiontype = "double exponential")
+        CalF.applyFunction(zeros(length(mResfinal.Times)), refparams; functiontype = "double exponential") #vector containing the zero humidity point of the humidity dependent calibration
 
     #humid / equilibrium calibration for 1 O
     println("calibrating all compounds with 1 oxygen atom humidity-dependent with reference $(refName).")
     dcps_per_ppb[:, oneoxygenfilter] .=
         f_hex .*
-        CalF.applyFunction(licor_final, refparams; functiontype = "double exponential") #use licor_final instead of CalF.applyFunction(fpfinal, humparams[1]; functiontype = humparams[3][1])
+        CalF.applyFunction(licor_final, refparams; functiontype = "double exponential") #use licor_final instead of CalF.applyFunction(fpfinal, humparams[1]; functiontype = humparams[3][1]) only if icor data is complete
 
     indices = Int[]
 
@@ -330,6 +257,7 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, he
 end
 #what I changed: remove frostpoint dependency, use only licor instead. use humidity dependant calibration for 1 oxygen and kinetic limit calibration for 2+ oxygen.
 #compounds with 0 oxygen are ignored (zero sensitivity)
+
 
 """
     plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp)
@@ -438,8 +366,6 @@ end
 # Main Script
 ################################
 
-config = CalibrationConfig(dir_licor_data, hexVSpis_params, licorDat, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, primaryionslist, refMass, refName, exportTraces, HeaderForExportDict)
-
 """
     calibrate_traces_main(config::CalibrationConfig)
 
@@ -490,3 +416,5 @@ end
 #error estimation still missing
 
 end # module CalibrateTraces
+
+
