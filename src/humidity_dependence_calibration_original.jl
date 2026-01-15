@@ -7,6 +7,7 @@ using PyPlot
 using Dates
 using CSV
 using DataFrames
+using Statistics
 import LsqFit
 using TOFTracer2
 import TOFTracer2.InterpolationFunctions as IntpF
@@ -86,9 +87,9 @@ tracesFig.tight_layout()
 humDat_bg = PlotFunctions.load_plotLicorData(humfile; ax=tracesAx_bg, header=2)
 tracesFig_bg.tight_layout()
 
-# bgTimes=[plotStart, plotEnd]
-# signalTimes=[plotStart, plotEnd]
-# humidityLimits=[0.0, 20] # mmol mol⁻¹ 
+bgTimes=[plotStart, plotEnd]
+signalTimes=[plotStart, plotEnd]
+humidityLimits=[0.0, 20] # mmol mol⁻¹ 
 
 # not doing it interactively for now
 if !isdefined(Main, :bgTimes)
@@ -97,7 +98,94 @@ if !isdefined(Main, :bgTimes)
     (humidityLimits, bgTimes, signalTimes) = CalF.humCal_getDatalimitsFromPlot(IFIG)
 end
 
+function getHumidityRange(humDat::DataFrame, query_times::Vector{DateTime};
+        max_abs_dev = 0.5,        # absolute mmol mol⁻¹ tolerance for plateau
+        max_rel_dev = 0.02,       # relative tolerance (fraction of center)
+        min_points = 3)           # ensure at least this many points in window
 
+    # fixed column names (as in your file header) — use strings because names(humDat) are strings
+    date_col_str = "System_Date_(Y-M-D)"
+    time_col_str = "System_Time_(h:m:s)"
+    hum_col_str  = "H₂O_(mmol_mol⁻¹)"
+
+    names_str = String.(names(humDat))
+    !(date_col_str in names_str && time_col_str in names_str && hum_col_str in names_str) &&
+        throw(ArgumentError("Expected licor columns not found. Available: $(names(humDat))"))
+
+    # build DateTime vector from date+time columns (index by string column names)
+    n = nrow(humDat)
+    licor_times = Vector{DateTime}(undef, n)
+    fmt1 = DateFormat("yyyy-mm-dd H:M:S")
+    fmt2 = DateFormat("yyyy-mm-dd H:M")
+    for i in 1:n
+        s = string(humDat[i, date_col_str]) * " " * string(humDat[i, time_col_str])
+        licor_times[i] = try
+            DateTime(s, fmt1)
+        catch
+            try
+                DateTime(s, fmt2)
+            catch
+                DateTime(s)   # fallback generic parser
+            end
+        end
+    end
+
+    # numeric humidity (NaN for missing / non-convertible)
+    raw = humDat[!, hum_col_str]
+    hum = Array{Float64}(undef, length(raw))
+    for i in eachindex(raw)
+        v = raw[i]
+        hum[i] = v === missing ? NaN : try Float64(v) catch NaN end
+    end
+
+    length(licor_times) == length(hum) || throw(ArgumentError("licor_times length mismatch"))
+
+    valid_mask = .!map(isnan, hum) .& .!map(ismissing, licor_times)
+    if count(valid_mask) == 0
+        throw(ArgumentError("No valid humidity/time rows found in humDat"))
+    end
+    times_v = licor_times[valid_mask]
+    hum_v = hum[valid_mask]
+    orig_indices = findall(valid_mask)
+
+    out = Vector{NamedTuple{(:avg, :start_time, :stop_time, :indices, :values), Tuple{Float64, DateTime, DateTime, Vector{Int}, Vector{Float64}}}}()
+
+    for q in query_times
+        dvals = abs.(Dates.value.(q .- times_v))
+        idx = argmin(dvals)
+        center = hum_v[idx]
+
+        within_tol(val) = abs(val - center) <= max_abs_dev || abs(val - center) <= max_rel_dev * max(abs(center), eps())
+
+        l = idx
+        while l > 1 && within_tol(hum_v[l-1])
+            l -= 1
+        end
+        r = idx
+        while r < length(hum_v) && within_tol(hum_v[r+1])
+            r += 1
+        end
+
+        if (r - l + 1) < min_points
+            extra = min_points - (r - l + 1)
+            addl = min(extra ÷ 2 + extra % 2, l - 1)
+            addr = min(extra ÷ 2, length(hum_v) - r)
+            l -= addl
+            r += addr
+        end
+
+        values = hum_v[l:r]
+        avg = mean(values)
+        inds_in_original = orig_indices[l:r]
+        push!(out, (avg = avg, start_time = times_v[l], stop_time = times_v[r], indices = inds_in_original, values = values))
+    end
+
+    return out
+end
+
+results = getHumidityRange(humDat, measResult.Times)
+avgs = [r.avg for r in results]
+println("Averages: ", avgs)
 
 #######################################
 # calculate and plot calibration points
