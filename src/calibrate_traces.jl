@@ -58,6 +58,74 @@ end
 
 
 ### FUNCTIONS ###
+
+"""
+    dryCal_selectPIandRefDataInteractive(drycalibsfile::String)
+
+Interactively select dry calibration data points to exclude from fit and return fitted hexanone vs primary ion parameters.
+
+# Arguments
+- `drycalibsfile::String`: Path to dry calibration file (hdf5).
+
+# Returns
+- `hexVSpis_params`: Tuple containing fit parameters, errors, and functiontype.
+"""
+function dryCal_selectPIandRefDataInteractive(drycalibsfile::String)
+
+    allDF = CSV.read(drycalibsfile, DataFrame; header=2) # load all data
+
+    dryFig, dryCalibAx,  = PlotFunctions.scatterDryCalibs(drycalibsfile)
+    println("please give the minimum y-value to show")
+    dryCalibAx.set_ylim(bottom=parse(Int, readline()))
+    println("How many dry calibration data points do you want to exclude from the fit?")
+    nrOfExcludeCalibs = parse(Int, readline())
+    IFIG = PlotFunctions.InteractivePlot(drycalibsfile, dryCalibAx)
+    println("Select primary ion calibration coordinates to exclude by moving the mouse near the respective data points and press 'c'
+    and the respective maxima of the calibration data of the reference mass, pressing 'y'")
+    PlotFunctions.getMouseCoords(IFIG; datetime_x=true)
+    while (length(IFIG.coords) < nrOfExcludeCalibs)
+        sleep(0.1)
+    end
+
+    #Find closest datapoints
+    exclude_idx = Int[]
+    for i in 1:nrOfExcludeCalibs
+        t_click  = IFIG.coords[i][1]
+        y_click  = IFIG.coords[i][2]
+        dists = (allDF.Time .- t_click).^2 .+ (allDF.PrimaryIonsSum .- y_click).^2 # Distance in (Time, PrimaryIonsSum) space
+        push!(exclude_idx, argmin(dists))
+    end
+
+    exclude_idx = unique(exclude_idx)
+    df = allDF[Not(exclude_idx), :]
+
+    # Fit
+    hexVSpis_params = fitParameters(df.PrimaryIonsSum, df.ReferenceSignal; functiontype="power")
+    nrOfCalibs = nrow(df)
+
+    figure()
+    scatter(df.PrimaryIonsSum, df.ReferenceSignal, label="data")
+
+    xforfit = collect(floor(minimum(df.PrimaryIonsSum); sigdigits=1):1000: ceil(maximum(df.PrimaryIonsSum); sigdigits=1))
+
+    fill_between(xforfit,
+        PowerFunction(xforfit, hexVSpis_params[1] .- hexVSpis_params[2] / sqrt(nrOfCalibs)),
+        PowerFunction(xforfit, hexVSpis_params[1] .+ hexVSpis_params[2] / sqrt(nrOfCalibs)),
+        label="uncertainty", alpha=0.25)
+
+    plot(xforfit, PowerFunction(xforfit, hexVSpis_params[1]), label=hexVSpis_params[3])
+
+    legend()
+    xlabel("sum of primary ions [dcps]")
+    ylabel("signal on reference mass [dcps/ppb]")
+
+    savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.png")
+    savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.pdf")
+
+    return hexVSpis_params
+end
+
+
 """
     load_hexVSpis_params(drycalibsfile::String)
 
@@ -74,7 +142,7 @@ Load or create and save hexanone vs. primary ion calibration parameters, using T
 """
 function load_hexVSpis_params(drycalibsfile::String)
     if HDF5.ishdf5(drycalibsfile)
-        hexVSpis_params = CalF.dryCal_selectPIandRefDataFromIFIG(drycalibsfile)
+        hexVSpis_params = dryCal_selectPIandRefDataInteractive(drycalibsfile)
         hexVSpis_params2export = vcat(hexVSpis_params[3], ["parameters" "errors"], hcat(hexVSpis_params[1], hexVSpis_params[2]))
         CSV.write("$(dirname(drycalibsfile))Hexanone_VS_PIs_params.csv", DataFrame(hexVSpis_params2export, :auto)) #save parameters for later use?
     else
