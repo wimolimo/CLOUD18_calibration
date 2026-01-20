@@ -1,3 +1,8 @@
+#julia
+#] activate .
+#] precompile
+#include("src\\run_CLOUD18_calibration.jl")
+
 include("CLOUD18_calibration.jl")
 using CLOUD18_calibration: CalibrationConfig, calibrate_traces_main
 using TOFTracer2
@@ -13,7 +18,7 @@ dir_calib_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Calibration")
 dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor")
 
 #dry calibration file # this ican be either the processed file of the dry calibrations or the CSV file containing the exported hexanone vs primary ion parameters for loading them:
-drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5")
+drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5") #or "dry_std\\resultsHexanone_VS_PIs_params.csv"
 
 #humidity dependent calibration file, from humidity_dependence_calibration.jl
 humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "fitParameters_relative.txt") #humcalibfp

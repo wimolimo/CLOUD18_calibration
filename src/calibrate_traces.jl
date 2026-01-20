@@ -9,7 +9,8 @@ using DataFrames
 using Dates
 using Plots
 using DelimitedFiles
-#import Statistics
+using PyPlot ###change
+import Statistics
 
 #check !
 using TOFTracer2
@@ -60,6 +61,70 @@ end
 ### FUNCTIONS ###
 
 """
+    scatterDryCalibs2(drycalibsfile::String; referenceMasses=[TOFTracer2.massLibrary.HEXANONE_nh4[1]],primaryions=[])
+
+Plot dry calibration data for primary ions and reference masses from the specified dry calibration file.
+
+# Arguments
+- `drycalibsfile::String`: Path to dry calibration file (HDF5).
+- `referenceMasses::Vector{Float64}`: List of reference masses to plot (default: hexanone + NH4+).
+- `primaryions::Vector{Float64}`: List of primary ion masses to plot (default: all water and ammonium clusters).
+
+# Returns
+- `dryCalibFig`: Figure object of the dry calibration plot.
+- `dryCalibAx`: Axes object of the dry calibration plot.
+- `mResDryCalibs`: Measurement results loaded from the dry calibration file.
+- `primaryiontraces`: Traces of primary ions.
+- `referencetraces`: Traces of reference masses.
+"""
+function scatterDryCalibs2(drycalibsfile::String; referenceMasses=[TOFTracer2.massLibrary.HEXANONE_nh4[1]],primaryions=[]) #modified from PlotFunctions.scatterDryCalibs
+    if isempty(primaryions)
+        primaryions = [
+            MasslistFunctions.massFromComposition(H=2, O=1)
+            MasslistFunctions.massFromComposition(H=4, O=2)
+            MasslistFunctions.massFromComposition(H=6, O=3)
+            MasslistFunctions.massFromComposition(H=8, O=4)
+            MasslistFunctions.massFromComposition(H=3, N=1)
+            MasslistFunctions.massFromComposition(H=5, N=1, O=1)
+            MasslistFunctions.massFromComposition(H=7, N=1, O=2)
+            MasslistFunctions.massFromComposition(H=9, N=1, O=3)
+            MasslistFunctions.massFromComposition(H=6, N=2)
+            MasslistFunctions.massFromComposition(H=8, N=2, O=1)
+            MasslistFunctions.massFromComposition(H=10, N=2, O=2)
+            MasslistFunctions.massFromComposition(H=9, N=3)
+            MasslistFunctions.massFromComposition(H=11, N=3, O=1)
+        ]
+    end
+    massesDryCalibToPlot = vcat(primaryions, referenceMasses)
+    
+    mResDryCalibs = ResultFileFunctions.loadResults(drycalibsfile; useAveragesOnly=true, massesToLoad=massesDryCalibToPlot)# load data
+    dryCalibFig = figure()
+    dryCalibAx = subplot(111)
+    
+    filterarray = falses(length(mResDryCalibs.MasslistMasses)) # create bitarray based on occurence of primaryions in massesDryCalibToPlot
+    for m in primaryions
+        filterarray .|= isapprox.(mResDryCalibs.MasslistMasses,m;atol=0.00001)
+    end
+
+    primaryionmasses = mResDryCalibs.MasslistMasses[filterarray]
+    primaryiontraces = mResDryCalibs.Traces[:,filterarray] * sqrt.(100 ./ primaryionmasses)
+    referencetraces = mResDryCalibs.Traces[:,(!).(filterarray)] * sqrt.(100 ./ referenceMasses)
+    
+    PyPlot.scatter(mResDryCalibs.Times, primaryiontraces, label="sum of primary ions") #plot primary ions summed dcps trace
+    PyPlot.scatter(mResDryCalibs.Times, referencetraces, label="sum of reference ions - m/z $(round.(referenceMasses;digits=3))") # plot reference dcps trace
+    xlabel("Time")
+    ylabel("signals [dcps]")
+    title("Dry Calibrations")
+    legend()
+    yscale("log")
+    PyPlot.grid()
+    tight_layout()
+    PyPlot.savefig("$(dirname(drycalibsfile))dryCalibs.png")
+    return dryCalibFig, dryCalibAx, mResDryCalibs, primaryiontraces, referencetraces
+end
+
+
+"""
     dryCal_selectPIandRefDataInteractive(drycalibsfile::String)
 
 Interactively select dry calibration data points to exclude from fit and return fitted hexanone vs primary ion parameters.
@@ -70,62 +135,59 @@ Interactively select dry calibration data points to exclude from fit and return 
 # Returns
 - `hexVSpis_params`: Tuple containing fit parameters, errors, and functiontype.
 """
-function dryCal_selectPIandRefDataInteractive(drycalibsfile::String)
+function dryCal_selectPIandRefDataInteractive(drycalibsfile::String) #modified from CalibrationFunctions.dryCal_selectPIandRefDataFromIFIG
 
-    allDF = CSV.read(drycalibsfile, DataFrame; header=2) # load all data
-
-    dryFig, dryCalibAx,  = PlotFunctions.scatterDryCalibs(drycalibsfile)
+    dryCalibFig, dryCalibAx, mResDryCalibs, primaryiontraces, referencetraces = scatterDryCalibs2(drycalibsfile; referenceMasses=[TOFTracer2.massLibrary.HEXANONE_nh4[1]], primaryions=[])
     println("please give the minimum y-value to show")
     dryCalibAx.set_ylim(bottom=parse(Int, readline()))
     println("How many dry calibration data points do you want to exclude from the fit?")
     nrOfExcludeCalibs = parse(Int, readline())
     IFIG = PlotFunctions.InteractivePlot(drycalibsfile, dryCalibAx)
-    println("Select primary ion calibration coordinates to exclude by moving the mouse near the respective data points and press 'c'
-    and the respective maxima of the calibration data of the reference mass, pressing 'y'")
+    println("Select primary ion calibration coordinates to exclude by moving the mouse to the respective primary ion data point and press 'c'. Repeat until you have selected $nrOfExcludeCalibs point(s).")
     PlotFunctions.getMouseCoords(IFIG; datetime_x=true)
     while (length(IFIG.coords) < nrOfExcludeCalibs)
         sleep(0.1)
     end
-
+    
     #Find closest datapoints
     exclude_idx = Int[]
     for i in 1:nrOfExcludeCalibs
-        t_click  = IFIG.coords[i][1]
+        t_click  = IFIG.coords[i][1] # ISO 8601 datetime string like "2025-10-11T09:31:27.405"
         y_click  = IFIG.coords[i][2]
-        dists = (allDF.Time .- t_click).^2 .+ (allDF.PrimaryIonsSum .- y_click).^2 # Distance in (Time, PrimaryIonsSum) space
+        t_click_unix = Dates.datetime2unix(DateTime(t_click))
+        t_data_unix = Dates.datetime2unix.(mResDryCalibs.Times)
+        dists = (t_data_unix .- t_click_unix).^2 .+ (primaryiontraces .- y_click).^2 # Distance^2 in (Time, PrimaryIonsSum) space ######check datatype of Times: 15-element Vector{Dates.DateTime}: 2025-10-02T13:07:34.863, 2025-10-07T10:00:04.705, 2025-10-08T14:19:40.794; use matplotlib2datetime or similar?
         push!(exclude_idx, argmin(dists))
     end
-
-    exclude_idx = unique(exclude_idx)
-    df = allDF[Not(exclude_idx), :]
+    exclude_idx = unique(exclude_idx) # in case user clicked very close points, double selections are excluded
+    df = DataFrame(
+        Time = mResDryCalibs.Times[Not(exclude_idx)], #exclude selected time points via their Indices
+        PrimaryIonsSum = vec(sum(primaryiontraces[Not(exclude_idx), :]; dims=2)), #sum across masses and convert to vector
+        ReferenceSignal = vec(sum(referencetraces[Not(exclude_idx), :]; dims=2)) #sum across masses and convert to vector
+    )
 
     # Fit
-    hexVSpis_params = fitParameters(df.PrimaryIonsSum, df.ReferenceSignal; functiontype="power")
+    hexVSpis_params = CalF.fitParameters(df.PrimaryIonsSum, df.ReferenceSignal; functiontype="power")
     nrOfCalibs = nrow(df)
 
-    figure()
-    scatter(df.PrimaryIonsSum, df.ReferenceSignal, label="data")
-
+    figure() #change to Plots
+    PyPlot.scatter(df.PrimaryIonsSum, df.ReferenceSignal, label="data")
     xforfit = collect(floor(minimum(df.PrimaryIonsSum); sigdigits=1):1000: ceil(maximum(df.PrimaryIonsSum); sigdigits=1))
-
     fill_between(xforfit,
-        PowerFunction(xforfit, hexVSpis_params[1] .- hexVSpis_params[2] / sqrt(nrOfCalibs)),
-        PowerFunction(xforfit, hexVSpis_params[1] .+ hexVSpis_params[2] / sqrt(nrOfCalibs)),
-        label="uncertainty", alpha=0.25)
-
-    plot(xforfit, PowerFunction(xforfit, hexVSpis_params[1]), label=hexVSpis_params[3])
-
-    legend()
-    xlabel("sum of primary ions [dcps]")
-    ylabel("signal on reference mass [dcps/ppb]")
-
-    savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.png")
-    savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.pdf")
-
+        CalF.PowerFunction(xforfit, hexVSpis_params[1] .- hexVSpis_params[2] / sqrt(nrOfCalibs)),
+        CalF.PowerFunction(xforfit, hexVSpis_params[1] .+ hexVSpis_params[2] / sqrt(nrOfCalibs)),
+        label="uncertainty", 
+        alpha=0.25)
+    PyPlot.plot(xforfit, CalF.PowerFunction(xforfit, hexVSpis_params[1]), label=hexVSpis_params[3])
+    PyPlot.legend()
+    PyPlot.xlabel("sum of primary ions [dcps]")
+    PyPlot.ylabel("signal on reference mass [dcps/ppb]")
+    PyPlot.savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.png")
+    PyPlot.savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.pdf")
     return hexVSpis_params
 end
 
-
+#the rest is modified from calibration script
 """
     load_hexVSpis_params(drycalibsfile::String)
 
