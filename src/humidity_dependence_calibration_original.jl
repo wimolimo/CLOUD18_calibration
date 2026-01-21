@@ -77,7 +77,6 @@ end
     plotHighTimeRes = false,
     smoothing = 1,
     timeFrame2plot = (plotStart, plotEnd)
-
     )
 
 # plot licor data into same figure
@@ -101,11 +100,37 @@ end
 ##############################################
 # get humidity ranges around measurement times
 ##############################################
+struct output
+        avg::Float64
+        start_time::DateTime
+        stop_time::DateTime
+        indices::Vector{Vector{Int64}}
+        values::Vector{Float64}
+    end 
 
+out = Vector{output}()
+
+"""
+    getHumidityRange(humDat, query_times; max_abs_dev=0.2, max_rel_dev=0.05, min_points=3)
+
+    Given a DataFrame `humDat` with licor humidity data and a vector of `query_times` (DateTime),
+    this function finds, for each query time, a range of humidity values around the closest measurement
+    time that form a plateau within specified tolerances. The plateau is defined as the largest contiguous set of humidity
+    values around the query time that do not deviate from the center value (at the query time) by more than
+    `max_abs_dev` (absolute) or `max_rel_dev` (relative). If the plateau contains fewer than `min_points` points,
+    the window is expanded symmetrically until at least `min_points` are included.
+Returns a vector of NamedTuples, each containing:
+- `avg`: the average humidity in the identified range
+- `start_time`: the DateTime of the first point in the range
+- `stop_time`: the DateTime of the last point in the range
+- `indices`: the indices of the original DataFrame corresponding to the points in the range
+"""    
 function getHumidityRange(humDat::DataFrame, query_times::Vector{DateTime};
         max_abs_dev = 0.2,        # absolute mmol mol⁻¹ tolerance for plateau
         max_rel_dev = 0.05,       # relative tolerance (fraction of center)
         min_points = 3)           # ensure at least this many points in window
+
+    empty!(out)
 
     date_col_str = "System_Date_(Y-M-D)"
     time_col_str = "System_Time_(h:m:s)"
@@ -152,8 +177,6 @@ function getHumidityRange(humDat::DataFrame, query_times::Vector{DateTime};
     hum_v = hum[valid_mask]
     orig_indices = findall(valid_mask)
 
-    out = Vector{NamedTuple{(:avg, :start_time, :stop_time, :indices, :values), Tuple{Float64, DateTime, DateTime, Vector{Int}, Vector{Float64}}}}()
-
     for q in query_times
 
         # get closest humidity measurement to query time
@@ -184,7 +207,8 @@ function getHumidityRange(humDat::DataFrame, query_times::Vector{DateTime};
         values = hum_v[l:r]
         avg = mean(values)
         inds_in_original = orig_indices[l:r]
-        push!(out, (avg = avg, start_time = times_v[l], stop_time = times_v[r], indices = inds_in_original, values = values))
+        # push!(out, (avg = avg, start_time = times_v[l], stop_time = times_v[r], indices = inds_in_original, values = values))
+        push!(out, output(avg, times_v[l], times_v[r], [inds_in_original], values))
     end
 
     return out
@@ -197,18 +221,22 @@ end
 results = getHumidityRange(humDat, measResult.Times)
 avgs = [r.avg for r in results]
 
-starttimes = [r.start_time for r in results]
-endtimes = [r.stop_time for r in results]
+#starttimes = [r.start_time for r in results]
+#endtimes = [r.stop_time for r in results]
 println("Averages: ", avgs)
 
 
 # plot humidity points in both figures (std and bg)
 fig1 = tracesAx[:figure]
 ax_humidity = filter(ax -> ax[:get_ylabel]() == "Humidity [mmol mol⁻¹]", fig1[:axes])[1]
+#comparison values are interpolated humidity at measurement times, not averages
+comparison_value = IntpF.interpolateSelect(measResult.Times,humDat.DateTime,humDat[!,"H₂O_(mmol_mol⁻¹)"];selTimes=[DateTime(0),DateTime(3000)])
+
 # use center time of each selected window and plot as black markers
 centers = measResult.Times
 try
     ax_humidity[:scatter](centers, avgs; s=40, c="k", zorder=5)
+    ax_humidity[:scatter](centers, comparison_value; s=40, c="r", zorder=5)
     # dashed horizontal segments for each averaging window
     for r in results
         ax_humidity[:plot](
@@ -222,17 +250,14 @@ try
     end
     # optional: label each point with its value (rounded)
     for (c, a) in zip(centers, avgs)
-        ax_humidity[:text](c, a, string(round(a, digits=3)); fontsize=8, va="bottom", ha="center", color="k")
+        ax_humidity[:text](c, a-1.0, string(round(a, digits=3)); fontsize=8, va="bottom", ha="center", color="k")
+        ax_humidity[:text](c, a+0.5, string(round(comparison_value[findfirst(==(c), measResult.Times)], digits=3)); fontsize=8, va="bottom", ha="center", color="r")
     end
 catch err
     @warn "Could not plot averages on tracesAx_bg: $err"
 end
 
-println("xlim: ",tracesAx.get_xlim())
-# get humidity averages for bg data as well
-#humDat_time_bg = humDat_bg[!,"System_Time_(h:m:s)"]
-#timeFilter_bg = PlotFunctions.matplotlib2datetime.(tracesAx_bg.get_xlim()[1]) .< humDat_time_bg .< PlotFunctions.matplotlib2datetime.(tracesAx_bg.get_xlim()[2])
-#humtime = humDat_time_bg[timeFilter_bg]
+# now for bg data
 results_bg = getHumidityRange(humDat_bg, measResult_bg.Times)
 avgs_bg = [r.avg for r in results_bg]
 starttimes_bg = [r.start_time for r in results_bg]
@@ -243,26 +268,23 @@ ax_humidity_bg = filter(ax -> ax[:get_ylabel]() == "Humidity [mmol mol⁻¹]", f
 # use center time of each selected window and plot as black markers
 centers_bg = measResult_bg.Times
 
-try
-    ax_humidity_bg[:scatter](centers_bg, avgs_bg; s=40, c="k", zorder=5)
-    # dashed horizontal segments for each averaging window
-    for r in results_bg
-        ax_humidity_bg[:plot](
-            [r.start_time, r.stop_time],
-            [r.avg, r.avg];
-            linestyle="--",
-            color="r",
-            linewidth=1.2,
-            zorder=4
-        )
-    end
-    # optional: label each point with its value (rounded)
-    for (c, a) in zip(centers_bg, avgs_bg)
-        ax_humidity_bg[:text](c, a, string(round(a, digits=3)); fontsize=8, va="bottom", ha="center", color="k")
-    end
-catch err
-    @warn "Could not plot averages on tracesAx_bg: $err"
+ax_humidity_bg[:scatter](centers_bg, avgs_bg; s=40, c="k", zorder=5)
+# dashed horizontal segments for each averaging window
+for r in results_bg
+    ax_humidity_bg[:plot](
+        [r.start_time, r.stop_time],
+        [r.avg, r.avg];
+        linestyle="--",
+        color="r",
+        linewidth=1.2,
+        zorder=4
+    )
 end
+# label each point with its value (rounded)
+for (c, a) in zip(centers_bg, avgs_bg)
+    ax_humidity_bg[:text](c, a, string(round(a, digits=3)); fontsize=8, va="bottom", ha="center", color="k")
+end
+
 tracesFig.tight_layout()
 tracesFig_bg.tight_layout()
 
@@ -271,36 +293,30 @@ tracesFig_bg.tight_layout()
 #######################################
 
 """
-	humcal_getHumidityDependentSensitivity(mRes,humdat;hums=collect(0,0.1,1),bgtimes=[],signaltimes=[DateTime(0),DateTime(3000)],pptInInlet=1.0)
+	humcal_getHumidityDependentSensitivityOfBG(mRes,humdat;hums=collect(0,0.1,1),bgtimes=[],signaltimes=[DateTime(0),DateTime(3000)],pptInInlet=1.0)
 
 calculates from a processed dataset of a humidity-dependent calibration and an output file of a LiCOR the humidity dependent calibration factors
 """
-function humcal_getHumidityDependentSensitivityOfBG(mRes,humdat;hums=collect(0,0.1,1), bgtimes=[], signaltimes=[DateTime(0),DateTime(3000)],pptInInlet=1.0)
-	humdat_H2O_intp_signal = IntpF.interpolateSelect(mRes.Times,humdat.DateTime,humdat[!,"H₂O_(mmol_mol⁻¹)"];selTimes=signaltimes)
+function humcal_getHumidityDependentSensitivityOfBG(mRes,humdat; signaltimes=[DateTime(0),DateTime(3000)],pptInInlet=1.0)
+	
+    hums = IntpF.interpolateSelect(mRes.Times,humdat.DateTime,humdat[!,"H₂O_(mmol_mol⁻¹)"];selTimes=signaltimes)
 
 	Traces_dcps = mRes.Traces .* transpose(sqrt.(100 ./mRes.MasslistMasses))
 
-	(signalVShum,signalVShum_std) = IntpF.sortAverageSmoothInterpolate(hums,humdat_H2O_intp_signal,
-								      	                               Traces_dcps[signaltimes[1] .< mRes.Times .< signaltimes[2],:];
-								     	                               returnSTdev=true)
+    humRanges = getHumidityRange(humdat, mRes.Times[signaltimes[1] .< mRes.Times .< signaltimes[2]])
 
-	if length(bgtimes) == 2
-		humdat_H2O_intp_bg = IntpF.interpolateSelect(mRes.Times,humdat.DateTime,humdat[!,"H₂O_(mmol_mol⁻¹)"];selTimes=bgtimes)
-		bgVShum = IntpF.sortAverageSmoothInterpolate(hums,
-							     humdat_H2O_intp_bg,
-							     Traces_dcps[bgtimes[1] .< mRes.Times .< bgtimes[2],:];
-							     returnSTdev=false)
-		calibData = (signalVShum.-bgVShum)./(pptInInlet)
-		calibData_std = (signalVShum_std)./(pptInInlet)
-	else
-		calibData = (signalVShum)./(pptInInlet)
-		calibData_std = (signalVShum_std)./(pptInInlet)
-	end
+    println("hums: ", hums)
+    println("Traces_dcps size: ", size(Traces_dcps))
+
+    calibData = (Traces_dcps)./(pptInInlet)
+    #calibData_std_i = (signalVShum_std)./(pptInInlet)
+
 	# delete for Nans
 	calibData_noNaN = calibData[.!(vec(all(isnan.(calibData),dims=2))),:]
-	calibData_std_noNaN = calibData_std[.!(vec(all(isnan.(calibData),dims=2))),:]
+	#calibData_std_noNaN = calibData_std[.!(vec(all(isnan.(calibData),dims=2))),:]
 	hums_noNaN = hums[.!(vec(all(isnan.(calibData),dims=2))),:]
-	return (calibData_noNaN,calibData_std_noNaN,vec(hums_noNaN))
+
+	return (calibData_noNaN,vec(hums_noNaN))
 end
 
 
@@ -308,8 +324,16 @@ println("bgTimes: ", bgTimes[1], " — ", bgTimes[2])
 println("signalTimes: ", signalTimes[1], " — ", signalTimes[2])
 println("humidityLimits: ", humidityLimits)
 
+calibData, humidities = humcal_getHumidityDependentSensitivityOfBG(measResult, humDat;
+    signaltimes=signalTimes,
+    pptInInlet=1000)
 
+calibData_std = zeros(size(calibData))
 
+println("calibData: ", calibData)
+println("humidities: ", humidities)
+
+    #=
 (calibData, calibData_std, humidities) = CalF.humcal_getHumidityDependentSensitivity(measResult, humDat;
     hums=avgs,
     signaltimes=signalTimes,
@@ -318,7 +342,7 @@ println("humidityLimits: ", humidityLimits)
 println("calibData: ", calibData)
 println("calibData_std: ", calibData_std)
 println("humidities: ", humidities)
-
+=#
 fig = figure(figsize=(10, 6))
 (calibFig, calibAx) = PlotFunctions.scatter_errorbar(fig, measResult, humidities, calibData, calibData_std; ion=ion)
 xlabel("absolute humidity [mmol mol⁻¹]")
@@ -333,7 +357,6 @@ fitParams = []
 fitParamErrors = []
 colornames = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan", "tab:blue", "tab:orange", "tab:green", "tab:red"]
 
-#println(keysToPlot)
 println("n_x = ", length(humidities))
 println("n_y = ", size(calibData))
 println("size of keystoplot: ", size(keysToPlot))
@@ -376,7 +399,6 @@ ExpF.exportFitParameters("$(fp)fitParameters.txt", fitParams2Export, fitParamErr
 # correct fit parameters relative to Hexanone and save these also to file
 ##########################################################################
 
-#=
 
 if round(massLibrary.HEXANONE_nh4[1],digits=3) in round.(measResult.MasslistMasses,digits=3)
     fitParamsHex = fitParams2Export[:, isapprox.(measResult.MasslistMasses, massLibrary.HEXANONE_nh4[1], atol=0.0001)]
@@ -390,4 +412,3 @@ if round(massLibrary.HEXANONE_nh4[1],digits=3) in round.(measResult.MasslistMass
         fitfunction="relative_sensitivity_to_Hexanone(AH) = p1 * exp.(-p2*AH) .+ p3*exp.(-p4*AH) .+ p5")
 end
 
-=#
