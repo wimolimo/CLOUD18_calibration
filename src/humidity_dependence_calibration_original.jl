@@ -293,9 +293,23 @@ tracesFig_bg.tight_layout()
 #######################################
 
 """
-	humcal_getHumidityDependentSensitivityOfBG(mRes,humdat;hums=collect(0,0.1,1),bgtimes=[],signaltimes=[DateTime(0),DateTime(3000)],pptInInlet=1.0)
+    humcal_getHumidityDependentSensitivityOfBG(mRes, humdat; signaltimes=[DateTime(0),DateTime(3000)], pptInInlet=1.0)
 
-calculates from a processed dataset of a humidity-dependent calibration and an output file of a LiCOR the humidity dependent calibration factors
+    Calculate the humidity-dependent sensitivity of the measurement result `mRes`
+    using the humidity data `humdat`. The sensitivity is calculated as the ratio
+    of the measured traces (corrected for mass-dependent transmission) to the
+    known ppt in the inlet, for the specified signal times.
+
+    # Arguments
+    - `mRes::MeasurementResult`: The measurement result containing traces and times.
+    - `humdat::DataFrame`: The humidity data containing DateTime and humidity values.
+    - `signaltimes::Vector{DateTime}`: A vector with two DateTime values specifying
+      the start and end times for signal averaging.
+    - `pptInInlet::Float64`: The known ppt concentration in the inlet.
+
+    # Returns
+    - `calibData_noNaN::Array{Float64,2}`: The calibration data (sensitivity) without NaN values.
+    - `hums_noNaN::Vector{Float64}`: The corresponding humidity values without NaN entries.
 """
 function humcal_getHumidityDependentSensitivityOfBG(mRes,humdat; signaltimes=[DateTime(0),DateTime(3000)],pptInInlet=1.0)
 	
@@ -328,12 +342,12 @@ calibData, humidities = humcal_getHumidityDependentSensitivityOfBG(measResult, h
     signaltimes=signalTimes,
     pptInInlet=1000)
 
+# put std to zeros for now
 calibData_std = zeros(size(calibData))
 
-println("calibData: ", calibData)
-println("humidities: ", humidities)
-
-    #=
+println("calibData: ", size(calibData))
+println("humidities: ", size(humidities))
+#=
 (calibData, calibData_std, humidities) = CalF.humcal_getHumidityDependentSensitivity(measResult, humDat;
     hums=avgs,
     signaltimes=signalTimes,
@@ -343,6 +357,7 @@ println("calibData: ", calibData)
 println("calibData_std: ", calibData_std)
 println("humidities: ", humidities)
 =#
+
 fig = figure(figsize=(10, 6))
 (calibFig, calibAx) = PlotFunctions.scatter_errorbar(fig, measResult, humidities, calibData, calibData_std; ion=ion)
 xlabel("absolute humidity [mmol mol⁻¹]")
@@ -407,6 +422,7 @@ if round(massLibrary.HEXANONE_nh4[1],digits=3) in round.(measResult.MasslistMass
     fitParams2Export_rel = fitParams2Export ./ [maxHexanone, 1, maxHexanone, 1, maxHexanone]
     fitParamErrors2Export_rel = fitParamErrors2Export ./ [maxHexanone, 1, maxHexanone, 1, maxHexanone]
 
+    println("Exporting fit parameters relative to Hexanone to file.")
     ExpF.exportFitParameters("$(fp)fitParameters_relative.txt", fitParams2Export_rel, fitParamErrors2Export_rel,
         measResult.MasslistMasses, measResult.MasslistCompositions;
         fitfunction="relative_sensitivity_to_Hexanone(AH) = p1 * exp.(-p2*AH) .+ p3*exp.(-p4*AH) .+ p5")
