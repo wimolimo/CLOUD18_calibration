@@ -15,16 +15,16 @@ using TOFTracer2: massLibrary
 
 dir_CLOUD18 = joinpath(@__DIR__, "..", "..")
 dir_calib_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Calibration")
-dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor")
+dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor") #select licor data where times match the measurement to be calibrated: rename file to use with licor_restofthename.txt
 
 #dry calibration file # this ican be either the processed file of the dry calibrations or the CSV file containing the exported hexanone vs primary ion parameters for loading them:
 drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5") #or "dry_std\\resultsHexanone_VS_PIs_params.csv"
 
 #humidity dependent calibration file, from humidity_dependence_calibration.jl
-humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "fitParameters_relative.txt") #humcalibfp
+humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "resultsfitParameters_relative.txt") #humcalibfp
 
 #file to be calibrated at once with same mass list
-resultfp = joinpath(dir_calib_data, "Test") #change result filepath to data that is analyzed #results of this script are also saved here
+resultfp = joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #change result filepath to data that is analyzed #results of this script are also saved here
 resultfiles = ["$(resultfp)/results/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
 
 ionization = "NH4+" # "NH4+", "H+"...
