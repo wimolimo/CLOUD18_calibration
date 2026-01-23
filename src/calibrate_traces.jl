@@ -133,7 +133,7 @@ Interactively select dry calibration data points to exclude from fit and return 
 - `drycalibsfile::String`: Path to dry calibration file (hdf5).
 
 # Returns
-- `hexVSpis_params`: Tuple containing fit parameters, errors, and functiontype.
+- `hexVSpis_params::Tuple`: Tuple containing fit parameters, errors, and functiontype.
 """
 function dryCal_selectPIandRefDataInteractive(drycalibsfile::String) #modified from CalibrationFunctions.dryCal_selectPIandRefDataFromIFIG
 
@@ -187,6 +187,7 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String) #modified f
     return hexVSpis_params
 end
 
+
 #the rest is modified from calibration script
 """
     load_hexVSpis_params(drycalibsfile::String)
@@ -197,7 +198,7 @@ Load or create and save hexanone vs. primary ion calibration parameters, using T
 - `drycalibsfile::String`: Path to dry calibration file (HDF5 or CSV)
 
 # Returns
-- `hexVSpis_params`: Tuple containing parameters, errors, and metadata
+- `hexVSpis_params::Tuple`: Tuple containing parameters, errors, and metadata
 
 # Saves
 - CSV file with hexanone vs. primary ion calibration parameters if loaded from HDF5, in the same directory as `drycalibsfile`.
@@ -214,7 +215,7 @@ function load_hexVSpis_params(drycalibsfile::String)
     end
     return hexVSpis_params
 end
-
+# change to load from CSV if exists?
 
 """
     load_licor_data(dir_licor_data::String)
@@ -252,8 +253,9 @@ Plot humidity-dependent calibration results and return calibration DataFrame.
 - Humidity-dependent relative sensitivity to hexanone plot in the directory of `humcalibfile`.
 """
 function plot_humidity_dependent_calibration(humcalibfile, ionization)
-    calibDF = CSV.read(humcalibfile, DataFrame; header=2)
+    calibDF = CSV.read(humcalibfile, DataFrame; delim='\t', header=2)
 
+    ################ Plot humidity-dependent calibration resultsmove this to timo???#############################
     #instead of CalF.plot_humdep_fromCalibParameters:
     hum4plot=collect(0:0.2:12)
     ionization=ionization
@@ -262,7 +264,7 @@ function plot_humidity_dependent_calibration(humcalibfile, ionization)
     for (name, mass) in zip(calibDF[!, "Sumformula"], calibDF[!, "Mass"])
         f = findfirst(calibDF[!, "Sumformula"] .== name)
         # get all params:
-        params = calibDF[f, [:p1, :p2, :p3, :p4, :p5]]
+        params = calibDF[f, [:p1, :p2, :p3, :p4, :p5]] #fitpatrameters for this compound
         humdep = CalF.applyFunction(hum4plot,params;functiontype=humdepcalibRelationship="double exponential")
         Plots.plot(hum4plot, humdep, label=string(round(mass, digits=3), " - ", name))
     end
@@ -359,15 +361,15 @@ end
 Build calibration traces for all compounds based on humidity-dependent and dry calibration.
 
 # Arguments
-- `mResfinal::struct`: Measurement results containing mass list and time points.
+- `mResfinal::MeasurementResult`: Measurement results containing mass list and time points.
 - `summedPIs::Vector`: Summed primary ion intensities.
 - `licor_final::Vector`: Interpolated Licor humidity data aligned with measurement results time points.
 - `calibDF::DataFrame`: Calibration data frame.
-- `hexVSpis_params::Vector`: Hexanone vs primary ion parameters.
+- `hexVSpis_params::Tuple`: Hexanone vs primary ion parameters.
 - `refName::String`: Reference compound name.
 
 # Returns
-- `dcps_per_ppb::Matrix`: Calibration traces in dcps per ppb for all compounds.
+- `dcps_per_ppb::Matrix`: Calibration traces in dcps per ppb for all compounds, for each humidity and PI sum.
 - `indices::Vector{Int}`: Indices of calibrated compounds.
 """
 function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, hexVSpis_params, refName)
@@ -376,6 +378,11 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, he
     dcps_per_ppb = zeros(length(mResfinal.Times), length(mResfinal.MasslistMasses))
 
     fref = findfirst(calibDF[!, "Sumformula"] .== refName)
+    ########################
+    if fref === nothing
+        error("Reference compound '$refName' not found in calibration data.")
+    end
+    #########################
     refparams = calibDF[fref, [:p1, :p2, :p3, :p4, :p5]]
 
     #composition based filters
@@ -403,11 +410,7 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, he
         CalF.applyFunction(licor_final, refparams; functiontype = "double exponential") #use licor_final instead of CalF.applyFunction(fpfinal, humparams[1]; functiontype = humparams[3][1]) only if icor data is complete
 
     indices = Int[]
-
- #= for (name, mass) in zip(calibDF[!, "Sumformula"], calibDF[!, "Mass"])
-        params = calibDF[findfirst(calibDF[!, "Sumformula"] .== name), [:p1, :p2, :p3, :p4, :p5]]
-        index = findfirst(isapprox.(mResfinal.MasslistMasses, mass, atol=0.0001))
- =#
+ 
     for row in eachrow(calibDF)
         params = row[[:p1, :p2, :p3, :p4, :p5]]
         index = findfirst(isapprox.(mResfinal.MasslistMasses, row.Mass; atol=0.0001))
