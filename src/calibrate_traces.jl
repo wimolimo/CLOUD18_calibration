@@ -61,6 +61,66 @@ end
 ### FUNCTIONS ###
 
 """
+    parse_formula_to_composition(formula::String)
+
+Parse a chemical formula string and return a dictionary of element counts.
+Removes ionization markers (e.g., ".H+", "H+") before parsing.
+
+# Arguments
+- `formula::String`: Chemical formula string (e.g., "C6H15NO.H+" or "C2H6N2")
+
+# Returns
+- `Dict{String,Int}`: Dictionary mapping element symbols to their counts
+"""
+function parse_formula_to_composition(formula::String)
+    # Remove ionization markers like ".H+", "H+", or ".H2O"
+    formula_clean = replace(formula, r"\.?H\+|\.?H2O|\.?.*[+\-].*" => "")
+    
+    composition = Dict{String,Int}()
+    
+    # Match element symbol (uppercase letter optionally followed by lowercase) 
+    # followed by optional number
+    pattern = r"([A-Z][a-z]?)(\d*)"
+    
+    for match in eachmatch(pattern, formula_clean)
+        element = match.captures[1]
+        count_str = match.captures[2]
+        count = isempty(count_str) ? 1 : parse(Int, count_str)
+        composition[element] = get(composition, element, 0) + count
+    end
+    
+    return composition
+end
+
+
+"""
+    find_formula_index(formulas, target_formula::String)
+
+Find the index of a formula in a vector by comparing atomic composition.
+Returns `nothing` if no match is found.
+
+# Arguments
+- `formulas`: Vector of formula strings from DataFrame (any string-like type)
+- `target_formula::String`: Target formula to search for
+
+# Returns
+- `Int` or `Nothing`: Index of matching formula or nothing if not found
+"""
+function find_formula_index(formulas, target_formula::String)
+    target_composition = parse_formula_to_composition(target_formula)
+    
+    for (i, formula) in enumerate(formulas)
+        formula_composition = parse_formula_to_composition(String(formula))
+        if formula_composition == target_composition
+            return i
+        end
+    end
+    
+    return nothing
+end
+
+
+"""
     scatterDryCalibs2(drycalibsfile::String; referenceMasses=[TOFTracer2.massLibrary.HEXANONE_nh4[1]],primaryions=[])
 
 Plot dry calibration data for primary ions and reference masses from the specified dry calibration file.
@@ -272,10 +332,10 @@ function plot_humidity_dependent_calibration(humcalibfile, ionization)
     Plots.ylabel!(plt, "relative sensitivity to Hexanone []")
     # linear y-scale
     Plots.plot!(plt, legend = :best)
-    Plots.savefig(plt, "$(dirname(humcalibfile))calibration_relHexanone_lin_$(ionization).png")
+    Plots.savefig(plt, "$(dirname(humcalibfile))/calibration_relHexanone_lin_$(ionization).png")
     # logarithmic y-scale
-    Plots.plot!(plt, yscale = :log10)
-    Plots.savefig(plt, "$(dirname(humcalibfile))calibration_relHexanone_log_$(ionization).png")
+    ####Plots.plot!(plt, yscale = :log10)
+    ####Plots.savefig(plt, "$(dirname(humcalibfile))/calibration_relHexanone_log_$(ionization).png")
 
     return calibDF
 end
@@ -377,10 +437,11 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, he
     #initialize calibration traces matrix with zeros
     dcps_per_ppb = zeros(length(mResfinal.Times), length(mResfinal.MasslistMasses))
 
-    fref = findfirst(calibDF[!, "Sumformula"] .== refName)
-    ########################
+    #########################
+    # Match reference compound by atomic composition instead of exact string matching
+    fref = find_formula_index(calibDF[!, "Sumformula"], refName)
     if fref === nothing
-        error("Reference compound '$refName' not found in calibration data.")
+        error("Reference compound '$refName' not found in calibration data. Available formulas: $(calibDF[!, "Sumformula"])")
     end
     #########################
     refparams = calibDF[fref, [:p1, :p2, :p3, :p4, :p5]]
@@ -446,22 +507,23 @@ Plot calibration traces for selected compounds and save the plots.
 - Calibration traces plot as PNG and PDF files.
 """
 function plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp)
-    p1 = plot(size=(1000,600),
+    p1 = Plots.plot(size=(1000,600),
         xlabel="time [UTC]",
-        ylabel="calibration factor [dcps / ppb]")
+        ylabel="calibration factor [dcps / ppb]",
+        yscale = :log10)
 
     for i in indices
-        plot!(p1,
+        Plots.plot!(p1,
             mResfinal.Times,
             dcps_per_ppb[:, i],
             label = "index $i - $(round(mResfinal.MasslistMasses[i],digits=2)), " * MasslistFunctions.sumFormulaStringFromCompositionArray(mResfinal.MasslistCompositions[:,i])
         )
     end
 
-    plot!(p1, mResfinal.Times, summedPIs, label="summed primary ions", lw=2)
+    Plots.plot!(p1, mResfinal.Times, summedPIs, label="summed primary ions", lw=2)
 
-    savefig(p1, "$(resultfp)CalibrationTraces.png")
-    savefig(p1, "$(resultfp)CalibrationTraces.pdf")
+    Plots.savefig(p1, "$(resultfp)CalibrationTraces.png")
+    Plots.savefig(p1, "$(resultfp)CalibrationTraces.pdf")
 end
 
 
@@ -504,7 +566,8 @@ function export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderFor
         )
 
     iifig = PlotFunctions.InteractivePlot(calibResult)
-    PlotFunctions.scrollAddTraces(iifig)
+    PlotFunctions.scrollAddTraces(iifig) ############specify how to select traces?
+    println("Please select the traces you want to export by scrolling and pressing 'a'. Close the figure window when done.")
     IndOfinterest = unique(iifig.activeIndices)
 
     HeaderForExport = TOFTracer2.ExportFunctions.CLOUDheader(calibResult.Times;
