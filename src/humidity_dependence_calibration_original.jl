@@ -1,9 +1,6 @@
 using HDF5
-#import PyCall
-#pygui(:tk) # :tk, :gtk3, :gtk, :qt5, :qt4, :qt, or :wx
-
-using PyCall
-using PyPlot
+using PythonCall
+using PythonPlot
 using Dates
 using CSV
 using DataFrames
