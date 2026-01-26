@@ -8,7 +8,8 @@ using CSV
 using DataFrames
 using Dates
 using DelimitedFiles
-using PythonPlot
+using PyPlot
+using PyCall
 import Statistics
 
 #check !
@@ -166,16 +167,16 @@ function scatterDryCalibs2(drycalibsfile::String; referenceMasses=[TOFTracer2.ma
     primaryiontraces = mResDryCalibs.Traces[:,filterarray] * sqrt.(100 ./ primaryionmasses)
     referencetraces = mResDryCalibs.Traces[:,(!).(filterarray)] * sqrt.(100 ./ referenceMasses)
     
-    PyPlot.scatter(mResDryCalibs.Times, primaryiontraces, label="sum of primary ions") #plot primary ions summed dcps trace
-    PyPlot.scatter(mResDryCalibs.Times, referencetraces, label="sum of reference ions - m/z $(round.(referenceMasses;digits=3))") # plot reference dcps trace
+    scatter(mResDryCalibs.Times, primaryiontraces, label="sum of primary ions") #plot primary ions summed dcps trace
+    scatter(mResDryCalibs.Times, referencetraces, label="sum of reference ions - m/z $(round.(referenceMasses;digits=3))") # plot reference dcps trace
     xlabel("Time")
     ylabel("signals [dcps]")
     title("Dry Calibrations")
     legend()
     yscale("log")
-    PyPlot.grid()
+    grid()
     tight_layout()
-    PyPlot.savefig("$(dirname(drycalibsfile))dryCalibs.png")
+    savefig("$(dirname(drycalibsfile))dryCalibs.png")
     return dryCalibFig, dryCalibAx, mResDryCalibs, primaryiontraces, referencetraces
 end
 
@@ -227,20 +228,20 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String) #modified f
     nrOfCalibs = nrow(df)
 
     figure()
-    PyPlot.scatter(df.PrimaryIonsSum, df.ReferenceSignal, label="data")
+    scatter(df.PrimaryIonsSum, df.ReferenceSignal, label="data")
     xforfit = collect(floor(minimum(df.PrimaryIonsSum); sigdigits=1):1000: ceil(maximum(df.PrimaryIonsSum); sigdigits=1))
     fill_between(xforfit,
         CalF.PowerFunction(xforfit, hexVSpis_params[1] .- hexVSpis_params[2] / sqrt(nrOfCalibs)),
         CalF.PowerFunction(xforfit, hexVSpis_params[1] .+ hexVSpis_params[2] / sqrt(nrOfCalibs)),
         label="uncertainty", 
         alpha=0.25)
-    PyPlot.plot(xforfit, CalF.PowerFunction(xforfit, hexVSpis_params[1]), label=hexVSpis_params[3])
-    PyPlot.legend()
-    PyPlot.xlabel("sum of primary ions [dcps]")
-    PyPlot.ylabel("signal on reference mass [dcps/ppb]")
-    PyPlot.yscale("log")
-    PyPlot.savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.png")
-    PyPlot.savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.pdf")
+    plot(xforfit, CalF.PowerFunction(xforfit, hexVSpis_params[1]), label=hexVSpis_params[3])
+    legend()
+    xlabel("sum of primary ions [dcps]")
+    ylabel("signal on reference mass [dcps/ppb]")
+    yscale("log")
+    savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.png")
+    savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.pdf")
     return hexVSpis_params
 end
 
@@ -318,7 +319,7 @@ function plot_humidity_dependent_calibration(humcalibfile, ionization)
     hum4plot=collect(0:0.2:12)
     ionization=ionization
 
-    fig, ax = PyPlot.subplots(figsize=(10,6))
+    fig, ax = subplots(figsize=(10,6))
     for (name, mass) in zip(calibDF[!, "Sumformula"], calibDF[!, "Mass"])
         f = findfirst(calibDF[!, "Sumformula"] .== name)
         if isnothing(f)
@@ -569,25 +570,25 @@ Plot directly calibrated traces, allow interactive selection of time periods to 
 - `mResfinal` (modified in-place)
 """
 function plot_and_filter_directly_calibrated_traces(mResfinal, dcps_per_ppb, indices, summedPIs, resultfp)
-    fig = PyPlot.figure(figsize=(10,6))
-    ax = PyPlot.subplot(111)
-    PyPlot.plot(mResfinal.Times, 1000.0 .* mResfinal.Traces[:, indices] ./ dcps_per_ppb[:, indices])
-    PyPlot.plot(mResfinal.Times, summedPIs)
+    fig = figure(figsize=(10,6))
+    ax = subplot(111)
+    plot(mResfinal.Times, 1000.0 .* mResfinal.Traces[:, indices] ./ dcps_per_ppb[:, indices])
+    plot(mResfinal.Times, summedPIs)
     legStrings = Array{String,1}(undef, length(indices) + 1)
     for (i, idx) in enumerate(indices)
         legStrings[i] = "m/z = " * string(round(mResfinal.MasslistMasses[idx], digits=2)) * " - " * MasslistFunctions.sumFormulaStringFromCompositionArray(mResfinal.MasslistCompositions[:, idx])
     end
     legStrings[end] = "summed primary ions"
 
-    PyPlot.legend(legStrings)
-    PyPlot.ylabel("concentration [ppt]")
-    PyPlot.xlabel("time [UTC]")
-    PyPlot.title("Directly Calibrated Traces")
-    PyPlot.yscale("log")
-    PyPlot.ylim(1e-2, maximum(summedPIs) * 2)
+    legend(legStrings)
+    ylabel("concentration [ppt]")
+    xlabel("time [UTC]")
+    title("Directly Calibrated Traces")
+    yscale("log")
+    ylim(1e-2, maximum(summedPIs) * 2)
 
-    PyPlot.savefig(joinpath(resultfp, "DirectlyCalibratedTraces.png"))
-    PyPlot.savefig(joinpath(resultfp, "DirectlyCalibratedTraces.pdf"))
+    savefig(joinpath(resultfp, "DirectlyCalibratedTraces.png"))
+    savefig(joinpath(resultfp, "DirectlyCalibratedTraces.pdf"))
 
     #=
     ifig = PlotFunctions.InteractivePlot("", ax)#################
