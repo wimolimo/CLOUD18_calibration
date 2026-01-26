@@ -7,7 +7,6 @@ using HDF5
 using CSV
 using DataFrames
 using Dates
-using Plots
 using DelimitedFiles
 using PyPlot ###change
 import Statistics
@@ -227,7 +226,7 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String) #modified f
     hexVSpis_params = CalF.fitParameters(df.PrimaryIonsSum, df.ReferenceSignal; functiontype="power")
     nrOfCalibs = nrow(df)
 
-    figure() #change to Plots
+    figure()
     PyPlot.scatter(df.PrimaryIonsSum, df.ReferenceSignal, label="data")
     xforfit = collect(floor(minimum(df.PrimaryIonsSum); sigdigits=1):1000: ceil(maximum(df.PrimaryIonsSum); sigdigits=1))
     fill_between(xforfit,
@@ -465,24 +464,27 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, he
 
     # wet sensitivity of different masses
     f_hum0 = CalF.applyFunction(zeros(length(mResfinal.Times)), ref_params; functiontype = "double exponential") #vector containing the zero humidity point of the humidity dependent calibration
+    
     println("Do you want to apply the humidity-dependent calibration for 1 oxygen compounds (recommended for T>0°C)? (y/n)")
     userinput = readline()
     if userinput == "y"
         f_hum = CalF.applyFunction(licor_final, ref_params; functiontype = "double exponential") # licor_final has length of times #use licor_final instead of CalF.applyFunction(fpfinal, humparams[1]; functiontype = humparams[3][1]) only if icor data is complete
+        println("calibrating all compounds with >=2 oxygen atoms and undefined ones with reference $(refName) dry.")
+        println("calibrating all compounds with 1 oxygen atom humidity-dependent with reference $(refName).")
     elseif userinput == "n"
         f_hum = f_hum0
+        println("calibrating all compounds (except 0 oxygen compounds) dry with reference $(refName).")
     else
         error("Invalid input for humidity-dependent calibration choice. Please enter 'y' or 'n'.")
     end
+
     f_hum_err = zeros(length(mResfinal.Times)) #placeholder for later addition of relative humidity dependent calibration error. Note that this part holds ONLY true, if the errors from the humidity-dependent calibration fit are negligible compared to the errors of the fit to the primary ions
 
     #dry / kinetic limit calibration for undef and >=2 O
-    println("calibrating all compounds with >2 oxygen atoms and undefined ones with reference $(refName) dry.")
     dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .= f_hex .* f_hum0
     dcps_per_ppb_err[:, (undeffilter .| twoplusoxygenfilter)] .= dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .* sqrt.(f_hex_err.^2 .+ 0.0.^2) # no humidity dependent calibration error for dry calibration
 
     #humid / equilibrium calibration for 1 O
-    println("calibrating all compounds with 1 oxygen atom humidity-dependent with reference $(refName).")
     dcps_per_ppb[:, oneoxygenfilter] .= f_hex .* f_hum
     dcps_per_ppb_err[:, oneoxygenfilter] .= dcps_per_ppb[:, oneoxygenfilter] .* sqrt.(f_hex_err.^2 .+ f_hum_err.^2) # combine errors from dry and humid calibration
 
