@@ -24,7 +24,6 @@ import TOFTracer2.MasslistFunctions
 import TOFTracer2.massLibrary
 
 ### STRUCT ###
-
 """
     CalibrationConfig
 
@@ -59,34 +58,33 @@ end
 
 
 ### FUNCTIONS ###
-
+### helper functions ###
 """
     parse_formula_to_composition(formula::String)
 
 Parse a chemical formula string and return a dictionary of element counts.
-Removes ionization markers (e.g., ".H+", "H+") before parsing.
 
 # Arguments
-- `formula::String`: Chemical formula string (e.g., "C6H15NO.H+" or "C2H6N2")
+- `formula::String`: Chemical formula string (e.g., "C6H15NO.H+" or "C6H15H+NO")
 
 # Returns
-- `Dict{String,Int}`: Dictionary mapping element symbols to their counts
+- `Dict{String,Int}`: Dictionary mapping element symbols to their counts, ignoring charges.
 """
 function parse_formula_to_composition(formula::String)
-    # Remove ionization markers like ".H+", "H+", or ".H2O"
-    formula_clean = replace(formula, r"\.?H\+|\.?H2O|\.?.*[+\-].*" => "")
     
+    formula_clean = replace(formula, r"\d*[+-]" => "") # handles multiple charges, parentheses not handled
     composition = Dict{String,Int}()
     
-    # Match element symbol (uppercase letter optionally followed by lowercase) 
-    # followed by optional number
-    pattern = r"([A-Z][a-z]?)(\d*)"
+    # Match element symbol (uppercase letter optionally followed by lowercase) -> group [1]
+    # followed by optional number -> group [2]
+    # ignores everything that is not an element symbol + number (e.g. +, -, ., etc)
+    pattern = r"([A-Z][a-z]?)(\d*)" #regrex pattern to match elements and their counts
     
-    for match in eachmatch(pattern, formula_clean)
-        element = match.captures[1]
+    for match in eachmatch(pattern, formula_clean) # iterate over all formulas in the structure of pattern, ignoring charges
+        element = match.captures[1] 
         count_str = match.captures[2]
-        count = isempty(count_str) ? 1 : parse(Int, count_str)
-        composition[element] = get(composition, element, 0) + count
+        count = isempty(count_str) ? 1 : parse(Int, count_str) # default count is 1 if not specified, otherwise parse the number
+        composition[element] = get(composition, element, 0) + count # accumulate counts for each element: get element count. if element does not exist asume count=0; add current count
     end
     
     return composition
@@ -112,11 +110,10 @@ function find_formula_index(formulas, target_formula::String)
     for (i, formula) in enumerate(formulas)
         formula_composition = parse_formula_to_composition(String(formula))
         if formula_composition == target_composition
-            return i
+            return i #if more than 1 would match, return first
         end
     end
-    
-    return nothing
+    return nothing # if no match was found
 end
 
 
@@ -242,6 +239,7 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String) #modified f
     PyPlot.legend()
     PyPlot.xlabel("sum of primary ions [dcps]")
     PyPlot.ylabel("signal on reference mass [dcps/ppb]")
+    PyPlot.yscale("log")
     PyPlot.savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.png")
     PyPlot.savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.pdf")
     return hexVSpis_params
@@ -249,6 +247,7 @@ end
 
 
 #the rest is modified from calibration script
+### calibration steps functions ###
 """
     load_hexVSpis_params(drycalibsfile::String)
 
@@ -315,27 +314,30 @@ Plot humidity-dependent calibration results and return calibration DataFrame.
 function plot_humidity_dependent_calibration(humcalibfile, ionization)
     calibDF = CSV.read(humcalibfile, DataFrame; delim='\t', header=2)
 
-    ################ Plot humidity-dependent calibration resultsmove this to timo???#############################
+    ################ Plot humidity-dependent calibration results: move this to timo???#############################
     #instead of CalF.plot_humdep_fromCalibParameters:
     hum4plot=collect(0:0.2:12)
     ionization=ionization
 
-    plt = Plots.plot()
+    fig, ax = PyPlot.subplots(figsize=(10,6))
     for (name, mass) in zip(calibDF[!, "Sumformula"], calibDF[!, "Mass"])
         f = findfirst(calibDF[!, "Sumformula"] .== name)
+        if isnothing(f)
+            println("Warning: Could not find formula $name in calibration DataFrame.")
+            continue
+        end
         # get all params:
-        params = calibDF[f, [:p1, :p2, :p3, :p4, :p5]] #fitpatrameters for this compound
+        params = calibDF[f, [:p1, :p2, :p3, :p4, :p5]] #fitparameters for this compound
         humdep = CalF.applyFunction(hum4plot,params;functiontype=humdepcalibRelationship="double exponential")
-        Plots.plot(hum4plot, humdep, label=string(round(mass, digits=3), " - ", name))
+        ax.plot(hum4plot, humdep, label=string(round(mass, digits=3), " - ", name))
     end
-    Plots.xlabel!(plt, "absolute humidity [mmol mol⁻¹]")
-    Plots.ylabel!(plt, "relative sensitivity to Hexanone []")
-    # linear y-scale
-    Plots.plot!(plt, legend = :best)
-    Plots.savefig(plt, "$(dirname(humcalibfile))/calibration_relHexanone_lin_$(ionization).png")
-    # logarithmic y-scale
-    ####Plots.plot!(plt, yscale = :log10)
-    ####Plots.savefig(plt, "$(dirname(humcalibfile))/calibration_relHexanone_log_$(ionization).png")
+    ax.set_xlabel("absolute humidity [mmol mol⁻¹]")
+    ax.set_ylabel("relative sensitivity to Hexanone []")
+    ax.set_title("Humidity-dependent calibration - Ionization: $(ionization)")
+    ax.legend()
+    fig.savefig("$(dirname(humcalibfile))/calibration_relHexanone_lin_$(ionization).png")
+    ax.set_yscale("log")
+    fig.savefig("$(dirname(humcalibfile))/calibration_relHexanone_log_$(ionization).png")
 
     return calibDF
 end
@@ -414,7 +416,6 @@ function interpolate_licor_to_ptr_time(mResfinal, licorDat)
 end
 
 
-
 """
     build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, hexVSpis_params, refName)
 
@@ -424,7 +425,7 @@ Build calibration traces for all compounds based on humidity-dependent and dry c
 - `mResfinal::MeasurementResult`: Measurement results containing mass list and time points.
 - `summedPIs::Vector`: Summed primary ion intensities.
 - `licor_final::Vector`: Interpolated Licor humidity data aligned with measurement results time points.
-- `calibDF::DataFrame`: Calibration data frame.
+- `calibDF::DataFrame`: Humidity dependent calibration data.
 - `hexVSpis_params::Tuple`: Hexanone vs primary ion parameters.
 - `refName::String`: Reference compound name.
 
@@ -436,15 +437,14 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, he
 
     #initialize calibration traces matrix with zeros
     dcps_per_ppb = zeros(length(mResfinal.Times), length(mResfinal.MasslistMasses))
+    dcps_per_ppb_err = zeros(size(dcps_per_ppb))
 
-    #########################
-    # Match reference compound by atomic composition instead of exact string matching
-    fref = find_formula_index(calibDF[!, "Sumformula"], refName)
+    fref = find_formula_index(calibDF[!, "Sumformula"], refName) # Match reference compound by atomic composition instead of exact string matching
     if fref === nothing
         error("Reference compound '$refName' not found in calibration data. Available formulas: $(calibDF[!, "Sumformula"])")
     end
-    #########################
-    refparams = calibDF[fref, [:p1, :p2, :p3, :p4, :p5]]
+    
+    ref_params = calibDF[fref, [:p1, :p2, :p3, :p4, :p5]]
 
     #composition based filters
     undeffilter = BitVector(sum(mResfinal.MasslistCompositions; dims=1)[1, :] .== 0)
@@ -455,39 +455,62 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, he
     println("found $(sum(undeffilter)) undefined masses, $(sum(oneoxygenfilter)) masses with 1 oxygen atom, and $(sum(twoplusoxygenfilter)) masses with >=2 oxygen atoms")
     
     #Hexanone dry sensitivity [cps/ppb] vs primary ion cps, calculated for all time points
-    f_hex = CalF.applyFunction(summedPIs, hexVSpis_params[1]; functiontype = hexVSpis_params[3][1])
+    f_hex = CalF.applyFunction(summedPIs, hexVSpis_params[1]; functiontype = hexVSpis_params[3][1]) #summedPI has length times???
+    f_hex_err = sqrt.( 
+        (hexVSpis_params[2][1]./(hexVSpis_params[1][1]))^2 #relative variance of parameter a (slope), (delta a / a)^2
+        .+ (log.(summedPIs[summedPIs .> 0]).*hexVSpis_params[2][2]).^2 #relative variance of parameter b (exponent), (ln x *delta b)^2
+        .+ 2*(hexVSpis_params[2][1]./(hexVSpis_params[1][1])*log.(summedPIs[summedPIs .> 0]).*hexVSpis_params[2][2]) #covariance term (2 delta a/a * ln x * delta b); 2 cov(a,b) = delta a * delta b is assumed
+    )
+    f_hex_err[summedPIs .<= 0] .= 0
 
-    #multiply f_hex with wet sensitivity of different masses, relative to dry Hexanone
+    # wet sensitivity of different masses
+    f_hum0 = CalF.applyFunction(zeros(length(mResfinal.Times)), ref_params; functiontype = "double exponential") #vector containing the zero humidity point of the humidity dependent calibration
+    println("Do you want to apply the humidity-dependent calibration for 1 oxygen compounds (recommended for T>0°C)? (y/n)")
+    userinput = readline()
+    if userinput == "y"
+        f_hum = CalF.applyFunction(licor_final, ref_params; functiontype = "double exponential") # licor_final has length of times #use licor_final instead of CalF.applyFunction(fpfinal, humparams[1]; functiontype = humparams[3][1]) only if icor data is complete
+    elseif userinput == "n"
+        f_hum = f_hum0
+    else
+        error("Invalid input for humidity-dependent calibration choice. Please enter 'y' or 'n'.")
+    end
+    f_hum_err = zeros(length(mResfinal.Times)) #placeholder for later addition of relative humidity dependent calibration error. Note that this part holds ONLY true, if the errors from the humidity-dependent calibration fit are negligible compared to the errors of the fit to the primary ions
+
     #dry / kinetic limit calibration for undef and >=2 O
     println("calibrating all compounds with >2 oxygen atoms and undefined ones with reference $(refName) dry.")
-    dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .= #vector of length Times 
-        f_hex .*
-        CalF.applyFunction(zeros(length(mResfinal.Times)), refparams; functiontype = "double exponential") #vector containing the zero humidity point of the humidity dependent calibration
+    dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .= f_hex .* f_hum0
+    dcps_per_ppb_err[:, (undeffilter .| twoplusoxygenfilter)] .= dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .* sqrt.(f_hex_err.^2 .+ 0.0.^2) # no humidity dependent calibration error for dry calibration
 
     #humid / equilibrium calibration for 1 O
     println("calibrating all compounds with 1 oxygen atom humidity-dependent with reference $(refName).")
-    dcps_per_ppb[:, oneoxygenfilter] .=
-        f_hex .*
-        CalF.applyFunction(licor_final, refparams; functiontype = "double exponential") #use licor_final instead of CalF.applyFunction(fpfinal, humparams[1]; functiontype = humparams[3][1]) only if icor data is complete
+    dcps_per_ppb[:, oneoxygenfilter] .= f_hex .* f_hum
+    dcps_per_ppb_err[:, oneoxygenfilter] .= dcps_per_ppb[:, oneoxygenfilter] .* sqrt.(f_hex_err.^2 .+ f_hum_err.^2) # combine errors from dry and humid calibration
 
     indices = Int[]
  
     for row in eachrow(calibDF)
         params = row[[:p1, :p2, :p3, :p4, :p5]]
-        index = findfirst(isapprox.(mResfinal.MasslistMasses, row.Mass; atol=0.0001))
+        index = findfirst(isapprox.(mResfinal.MasslistMasses, row.Mass; atol=0.0001)) #find masses in masslist matching compounds in calibDF (humidity dependent calibration data)
+        f_hum_row = CalF.applyFunction(licor_final, params; functiontype = "double exponential") 
 
         if index isa Int
-            dcps_per_ppb[:, index] =
-                f_hex .*
-                CalF.applyFunction(licor_final, params; functiontype = "double exponential") 
-
+            dcps_per_ppb[:, index] = f_hex .* f_hum_row
+            dcps_per_ppb_err[:, index] = dcps_per_ppb[:, index] .* sqrt.(f_hex_err.^2 .+ f_hum_err.^2) # combine errors from dry and humid calibration
             push!(indices, index)
         end
     end
 
-    return dcps_per_ppb, indices
+    total_relative_error = sqrt.(f_hex_err .^2 .+ f_hum_err .^2)
+    mean_relative_error = Statistics.mean(total_relative_error)
+    std_of_mean_relative_error = Statistics.std(total_relative_error)
+    println("The relative standard error of the calibration factor for this method alone is a factor ",
+        round(mean_relative_error,digits=3), " ± ",round(std_of_mean_relative_error,digits=3),
+        " due to the error of the normalization to the primary ions.") #change print when f_hum_err != 0
+
+    return dcps_per_ppb, dcps_per_ppb_err, indices
 end
 #what I changed: remove frostpoint dependency, use only licor instead. use humidity dependant calibration for 1 oxygen and kinetic limit calibration for 2+ oxygen.
+#added error here, but f_hum_err is still zero
 #compounds with 0 oxygen are ignored (zero sensitivity)
 
 
@@ -507,23 +530,86 @@ Plot calibration traces for selected compounds and save the plots.
 - Calibration traces plot as PNG and PDF files.
 """
 function plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp)
-    p1 = Plots.plot(size=(1000,600),
-        xlabel="time [UTC]",
-        ylabel="calibration factor [dcps / ppb]",
-        yscale = :log10)
+    fig, ax = subplots(figsize = (10, 6))
+
+    ax.set_xlabel("time [UTC]")
+    ax.set_ylabel("calibration factor [dcps / ppb]")
+    ax.set_yscale("log")
 
     for i in indices
-        Plots.plot!(p1,
-            mResfinal.Times,
-            dcps_per_ppb[:, i],
-            label = "index $i - $(round(mResfinal.MasslistMasses[i],digits=2)), " * MasslistFunctions.sumFormulaStringFromCompositionArray(mResfinal.MasslistCompositions[:,i])
+        ax.plot(mResfinal.Times, dcps_per_ppb[:, i],
+            label = "$(round(mResfinal.MasslistMasses[i],digits=2)) * $(MasslistFunctions.sumFormulaStringFromCompositionArray(mResfinal.MasslistCompositions[:,i]))"
         )
     end
 
-    Plots.plot!(p1, mResfinal.Times, summedPIs, label="summed primary ions", lw=2)
+    ax.plot(mResfinal.Times, summedPIs, label="summed primary ions", linewidth=2)
+    ax.legend()
+    ax.set_title("Calibration Traces")
 
-    Plots.savefig(p1, "$(resultfp)CalibrationTraces.png")
-    Plots.savefig(p1, "$(resultfp)CalibrationTraces.pdf")
+    fig.savefig(joinpath(resultfp, "CalibrationTraces.png"))
+    fig.savefig(joinpath(resultfp, "CalibrationTraces.pdf"))
+end
+
+
+"""
+    plot_and_filter_directly_calibrated_traces!(mResfinal, dcps_per_ppb, indices, summedPIs, resultfp)
+
+Plot directly calibrated traces, allow interactive selection of time periods to delete, and set affected traces to NaN in-place.
+
+# Arguments
+- `mResfinal`: MeasurementResult (modified in-place)
+- `dcps_per_ppb::Matrix`: calibration factors [dcps / ppb]
+- `indices::Vector{Int}`: indices of calibrated masses
+- `summedPIs::Vector`: summed primary ions
+- `resultfp::String`: output file path prefix
+
+# Returns
+- `mResfinal` (modified in-place)
+"""
+function plot_and_filter_directly_calibrated_traces(mResfinal, dcps_per_ppb, indices, summedPIs, resultfp)
+    fig = PyPlot.figure(figsize=(10,6))
+    ax = PyPlot.subplot(111)
+    PyPlot.plot(mResfinal.Times, 1000.0 .* mResfinal.Traces[:, indices] ./ dcps_per_ppb[:, indices])
+    PyPlot.plot(mResfinal.Times, summedPIs)
+    legStrings = Array{String,1}(undef, length(indices) + 1)
+    for (i, idx) in enumerate(indices)
+        legStrings[i] = "m/z = " * string(round(mResfinal.MasslistMasses[idx], digits=2)) * " - " * MasslistFunctions.sumFormulaStringFromCompositionArray(mResfinal.MasslistCompositions[:, idx])
+    end
+    legStrings[end] = "summed primary ions"
+
+    PyPlot.legend(legStrings)
+    PyPlot.ylabel("concentration [ppt]")
+    PyPlot.xlabel("time [UTC]")
+    PyPlot.title("Directly Calibrated Traces")
+    PyPlot.yscale("log")
+    PyPlot.ylim(1e-2, maximum(summedPIs) * 2)
+
+    PyPlot.savefig(joinpath(resultfp, "DirectlyCalibratedTraces.png"))
+    PyPlot.savefig(joinpath(resultfp, "DirectlyCalibratedTraces.pdf"))
+
+    #=
+    ifig = PlotFunctions.InteractivePlot("", ax)#################
+    PlotFunctions.getMouseCoords(ifig; datetime_x = true)
+
+    println("""You can now select start and end times of periods to delete, e.g. due to:
+        - ion source breakdown
+        - calibration residues
+        - other artifacts
+        Click with 'd' to select times.  Press 'q' + Enter to quit.""")
+
+    while true
+        sleep(0.1)
+        readline() == "q" && break
+    end
+
+    if length(ifig.deleteXlim) > 0 && iseven(length(ifig.deleteXlim))
+        for i in 1:2:length(ifig.deleteXlim)
+            mResfinal.Traces[ifig.deleteXlim[i].<= mResfinal.Times.<= ifig.deleteXlim[i+1], :] .= NaN
+        end
+    end
+    =#
+
+    return mResfinal
 end
 
 
@@ -544,32 +630,45 @@ Export calibrated traces for masses with exactly one nitrogen and more than one 
 """
 function export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderForExportDict, resultfp)
 
-    #filter for masses with at least one carbon
-    filterCnr = mResfinal.MasslistCompositions[findfirst(mResfinal.MasslistElements .== "C"), :] .>= 1
-
-    #filter for masses with calibration data
-    filterNoCalib = vec(sum(dcps_per_ppb; dims=1) .> 0)
-
-    #filter for masses with exactly one nitrogen
-    filterNnr = mResfinal.MasslistCompositions[findfirst(mResfinal.MasslistElements .== "N"), :] .== 1 #adjust if want to export other masses
-
+    filterCnr = mResfinal.MasslistCompositions[findfirst(mResfinal.MasslistElements .== "C"), :] .>= 1 #filter for masses with at least one carbon
+    filterNoCalib = vec(sum(dcps_per_ppb; dims=1) .> 0) #filter for masses with calibration data
+    filterNnr = mResfinal.MasslistCompositions[findfirst(mResfinal.MasslistElements .== "N"), :] .== 1 #filter for masses with exactly one nitrogen; adjust if want to export other masses
     finalfilter = filterCnr .& filterNoCalib .& filterNnr
 
-    calibResult =
+    calibResult = #contains only filtered masses
         ResultFileFunctions.MeasurementResult(
             mResfinal.Times,
             mResfinal.MasslistMasses[finalfilter],
             mResfinal.MasslistElements,
             mResfinal.MasslistElementsMasses,
             mResfinal.MasslistCompositions[:,finalfilter],
-            1000.0 .* mResfinal.Traces[:,finalfilter] ./ dcps_per_ppb[:,finalfilter]
+            1000.0 .* mResfinal.Traces[:,finalfilter] ./ dcps_per_ppb[:,finalfilter] #converts traces from cps to ppt
         )
 
+    # filter for interesting traces:
+    # either with
+    # - findVaryingMasses (often filters too harsh!!!) only for long measurements (10 days) or high Res data
+    # - findChangingMasses (if BG and signal times clear!)
+    
+    c = ResultFileFunctions.findVaryingMasses(calibResult.MasslistMasses,
+        calibResult.MasslistCompositions,
+        calibResult.Traces;
+        sigmaThreshold=3,
+        noNitrogen = false,
+        onlySaneMasses = false,
+        filterCrosstalkMasses=false,
+        pointsForSmoothing = 10)
+    IndOfinterest = c[1]
+    
+    #or:
+ #= 
+    #interactive selection of traces to export
     iifig = PlotFunctions.InteractivePlot(calibResult)
-    PlotFunctions.scrollAddTraces(iifig) ############specify how to select traces?
-    println("Please select the traces you want to export by scrolling and pressing 'a'. Close the figure window when done.")
-    IndOfinterest = unique(iifig.activeIndices)
-
+    println("Please select the traces you want to export by scrolling and pressing 'a'.") #how can you terminate the selection?
+    PlotFunctions.scrollAddTraces(iifig) ############specify how to end it!
+    IndOfinterest = unique(iifig.activeIndices) #indices of selected traces #is empty??????????????
+=#   
+   
     HeaderForExport = TOFTracer2.ExportFunctions.CLOUDheader(calibResult.Times;
             title = HeaderForExportDict["title"],
             level=HeaderForExportDict["level"],
@@ -642,9 +741,11 @@ function calibrate_traces_main(config::CalibrationConfig)
     
     calibDF = plot_humidity_dependent_calibration(config.humcalibfile, config.ionization)
 
-    dcps_per_ppb, indices = build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, hexVSpis_params, config.refName)
+    dcps_per_ppb, dcps_per_ppb_err, indices = build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, hexVSpis_params, config.refName)
 
     plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, config.resultfp)
+
+    plot_and_filter_directly_calibrated_traces(mResfinal, dcps_per_ppb, indices, summedPIs, config.resultfp)
 
     if config.exportTraces
         export_calibrated_traces(mResfinal, dcps_per_ppb, config.ionization, config.HeaderForExportDict, config.resultfp)
