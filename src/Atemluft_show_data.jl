@@ -5,6 +5,7 @@ using Dates
 using CSV
 using DataFrames
 using Statistics
+using JSON3
 import LsqFit
 using TOFTracer2
 import TOFTracer2.InterpolationFunctions as IntpF
@@ -22,6 +23,7 @@ bg_file = joinpath(bg_fp, "_result.hdf5")
 
 random_file = joinpath("C://Users//c7441399//Documents//Atemluft", "2026-01-22-beginn-der-aufzeichnungen.txt")
 flight_fp = joinpath("C:\\Users\\c7441399\\Documents\\Atemluft\\flights")
+partector_file = joinpath("C:\\Users\\c7441399\\Documents\\Atemluft", "partector_data_test.json")
 
 plotStart = DateTime(2000, 1, 1, 0, 0, 0)
 plotEnd = DateTime(3000, 1, 1, 0, 0, 0)
