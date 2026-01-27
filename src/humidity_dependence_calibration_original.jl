@@ -1,6 +1,6 @@
 using HDF5
-using PythonCall
-using PythonPlot
+using PyCall
+using PyPlot
 using Dates
 using CSV
 using DataFrames
@@ -21,6 +21,7 @@ bg_fp = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "humidity_
 bg_file = joinpath(bg_fp, "_result.hdf5")
 
 random_file = joinpath("C://Users//c7441399//Documents//Atemluft", "2026-01-22-beginn-der-aufzeichnungen.txt")
+flight_fp = joinpath("C:\\Users\\c7441399\\Documents\\Atemluft\\flights")
 
 plotStart = DateTime(2000, 1, 1, 0, 0, 0)
 plotEnd = DateTime(3000, 1, 1, 0, 0, 0)
@@ -32,6 +33,64 @@ ions2plot = "NH4+" # "NH4+" # "all", "NH4+", "H+"
 STD_masses_dict = massLibrary.CLOUD_brownSTD_masses # 
 # ["Acetic Acid", "Hexanone", "Acetaldehyde", "Apinene", "Acetonitrile", "Benzene", "Octanone",
 # "Xylene", "Hexenal", "MVK", "Toluene", "DMS", "Acetone"]
+
+
+#######################
+#Atemluft file load
+##########################
+
+
+"""
+    load_plotLicorData(humfile;ax="None", header=1)
+    
+loads and plots the given licor file. 
+
+- header gives the line, in which the header is located (typically ==1 or ==2)
+- if ax (PyCall.PyObject) is given, it will plot the data in that axis, else, if will create a new figure
+"""
+function load_plotAtemluftData(humfile, flight_filepath;ax="None", header=1)
+
+    humdat=DataFrame(CSV.File(humfile, header = 2))
+    humtime = humdat[!,"System_Date_(Y-M-D)"] .+ humdat[!,"System_Time_(h:m:s)"]
+    humdat[!,"DateTime"] = humtime
+
+    # list CSV files in flight directory (full paths)
+    flight_files = readdir(flight_filepath; join=true)
+    flight_files = filter(f -> isfile(f) && endswith(lowercase(f), ".csv"), flight_files)
+    sort!(flight_files)
+
+    if ax == "None"
+        fig = figure()
+        ax2 = subplot()
+        h2o_mmol = humdat[!,"CO₂_(µmol_mol⁻¹)"]
+    else
+        ax2 = ax.twinx()
+        timeFilter = matplotlib2datetime.(ax.get_xlim()[1]) .< humtime .< matplotlib2datetime.(ax.get_xlim()[2])
+        humtime = humtime[timeFilter]
+        h2o_mmol = humdat[!,"CO₂_(µmol_mol⁻¹)"][timeFilter]
+    end
+    ax2.plot(humtime,h2o_mmol, label = "CO₂")
+
+    for file in flight_files
+
+        # read CSV (ensure header row and delimiter), then take column named "actual_on"
+        flightdata = CSV.read(file, DataFrame; header=1, delim=',')
+        # column contains ISO-like timestamps "2026-01-23T19:20:04Z"
+        flightcol = string.(flightdata[!,"actual_on"])
+        # remove trailing 'Z' (UTC marker) and parse to DateTime
+        flightcol = replace.(flightcol, "Z" => "")
+        flighttime = DateTime.(flightcol, dateformat"yyyy-mm-ddTHH:MM:SS")
+        ax2.axvline.(flighttime, color="red", linestyle="--")
+
+    end
+    ax2.set_ylabel("CO₂ [mmol mol⁻¹]")
+    ax2.legend(loc=1)
+    ax2.set_yscale("linear")
+return humdat
+end
+
+(humDat_random, fig_random, ax_random) = load_plotAtemluftData(random_file, flight_fp; header=2)
+
 
 ####################################
 # select masses and ions to analyze
