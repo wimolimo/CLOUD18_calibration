@@ -5,7 +5,6 @@ using Dates
 using CSV
 using DataFrames
 using Statistics
-using JSON3
 import LsqFit
 using TOFTracer2
 import TOFTracer2.InterpolationFunctions as IntpF
@@ -13,33 +12,49 @@ import TOFTracer2.CalibrationFunctions as CalF
 import TOFTracer2.ExportFunctions as ExpF
 import TOFTracer2.ImportFunctions as ImpF
 
-fp = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "Humidity-dependent_std", "results")
-file = joinpath(fp, "_result.hdf5")
-
-humfile = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Licor", "2025-11-21.txt")
-
-bg_fp = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "humidity_dependent_BG", "results")
-bg_file = joinpath(bg_fp, "_result.hdf5")
-
 random_file = joinpath("C://Users//c7441399//Documents//Atemluft", "2026-01-22-beginn-der-aufzeichnungen.txt")
 flight_fp = joinpath("C:\\Users\\c7441399\\Documents\\Atemluft\\flights")
-partector_file = joinpath("C:\\Users\\c7441399\\Documents\\Atemluft", "partector_data_test.json")
+partector_file = joinpath("C:\\Users\\c7441399\\Documents\\Atemluft", "Paterctor_TEST.csv")
 
 plotStart = DateTime(2000, 1, 1, 0, 0, 0)
 plotEnd = DateTime(3000, 1, 1, 0, 0, 0)
 
-println("Measurement time range: ", plotStart, " — ", plotEnd)
-
-ions2plot = "NH4+" # "NH4+" # "all", "NH4+", "H+"
-#STD_masses_dict = massLibrary.CLOUD_greenSTD_masses # STD1
-STD_masses_dict = massLibrary.CLOUD_brownSTD_masses # 
-# ["Acetic Acid", "Hexanone", "Acetaldehyde", "Apinene", "Acetonitrile", "Benzene", "Octanone",
-# "Xylene", "Hexenal", "MVK", "Toluene", "DMS", "Acetone"]
-
-
 #######################
 #Atemluft file load
 ##########################
+    # parse ISO timestamps with optional "+HH:MM" or "Z" offset.
+    # If apply_offset==true the timezone offset is APPLIED to the base time
+    # (e.g. "2026-01-20T00:00:00+01:00" -> 2026-01-20T01:00:00).
+    # If apply_offset==false the offset is ignored and only the base timestamp is returned.
+    function parse_iso_with_offset(s::AbstractString, apply_offset::Bool=true)
+        # handle trailing Z (UTC marker) -> treat as no offset
+        if endswith(s, "Z")
+            s2 = replace(s, "Z" => "")
+            return DateTime(s2, dateformat"yyyy-mm-ddTHH:MM:SS")
+        end
+
+        m = match(r"^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})([+-]\d{2}:\d{2})$", s)
+
+        if m === nothing
+            # fallback: strip any timezone suffix and parse
+            s2 = replace(s, r"[+-]\d{2}:\d{2}$" => "")
+            return DateTime(s2, dateformat"yyyy-mm-ddTHH:MM:SS")
+        end
+        
+        base = DateTime(m.captures[1], dateformat"yyyy-mm-ddTHH:MM:SS")
+
+        if !apply_offset
+            return base
+        end
+
+        off = m.captures[2]               # e.g. "+01:00"
+        sign = off[1]
+        hh = parse(Int, off[2:3])
+        mm = parse(Int, off[5:6])
+        minutes = hh*60 + mm
+
+        return sign == '+' ? base + Minute(minutes) : base - Minute(minutes)
+    end
 
 
 """
@@ -50,9 +65,9 @@ loads and plots the given licor file.
 - header gives the line, in which the header is located (typically ==1 or ==2)
 - if ax (PyCall.PyObject) is given, it will plot the data in that axis, else, if will create a new figure
 """
-function load_plotAtemluftData(humfile, flight_filepath;ax="None", header=1)
+function load_plotAtemluftData(humfile, flight_filepath, partector_file; ax="None", header_co2=1, apply_partector_offset::Bool=true)
 
-    humdat=DataFrame(CSV.File(humfile, header = 2))
+    humdat=DataFrame(CSV.File(humfile, header = header_co2))
     humtime = humdat[!,"System_Date_(Y-M-D)"] .+ humdat[!,"System_Time_(h:m:s)"]
     humdat[!,"DateTime"] = humtime
 
@@ -61,17 +76,20 @@ function load_plotAtemluftData(humfile, flight_filepath;ax="None", header=1)
     flight_files = filter(f -> isfile(f) && endswith(lowercase(f), ".csv"), flight_files)
     sort!(flight_files)
 
-    if ax == "None"
-        fig = figure()
-        ax2 = subplot()
-        h2o_mmol = humdat[!,"CO₂_(µmol_mol⁻¹)"]
-    else
-        ax2 = ax.twinx()
-        timeFilter = matplotlib2datetime.(ax.get_xlim()[1]) .< humtime .< matplotlib2datetime.(ax.get_xlim()[2])
-        humtime = humtime[timeFilter]
-        h2o_mmol = humdat[!,"CO₂_(µmol_mol⁻¹)"][timeFilter]
-    end
-    ax2.plot(humtime,h2o_mmol, label = "CO₂")
+    particle_number = CSV.read(partector_file, DataFrame; header=4, delim=',')
+    particle_col = string.(particle_number[!,"dateTime"])
+    
+
+    # broadcast the boolean as a Ref so each call receives the same bool
+    particle_time = parse_iso_with_offset.(particle_col, Ref(apply_partector_offset))
+    particle_counts = particle_number[!,"particle_number_concentration"]
+
+    fig = figure()
+    ax2 = subplot()
+    h2o_mmol = humdat[!,"CO₂_(µmol_mol⁻¹)"]
+
+    ax2.plot(humtime,h2o_mmol, label = "CO₂", linewidth=1)
+    ax3 = ax2.twinx()
 
     for file in flight_files
 
@@ -82,226 +100,19 @@ function load_plotAtemluftData(humfile, flight_filepath;ax="None", header=1)
         # remove trailing 'Z' (UTC marker) and parse to DateTime
         flightcol = replace.(flightcol, "Z" => "")
         flighttime = DateTime.(flightcol, dateformat"yyyy-mm-ddTHH:MM:SS")
-        ax2.axvline.(flighttime, color="red", linestyle="--")
+        ax2.axvline.(flighttime, color="red", linestyle="--", alpha=0.5, linewidth=1)
 
     end
+
+    ax3.plot(particle_time, particle_counts, label="Partector particle number concentration", color="green", alpha=0.7, linewidth=1)
+    ax3.set_ylabel("Partector particle number concentration [#/cm³]")
     ax2.set_ylabel("CO₂ [mmol mol⁻¹]")
     ax2.legend(loc=1)
     ax2.set_yscale("linear")
-return humdat
-end
+    return (humdat, fig, ax2)
+ end
 
-(humDat_random, fig_random, ax_random) = load_plotAtemluftData(random_file, flight_fp; header=2)
-
-
-####################################
-# select masses and ions to analyze
-####################################
-
-massesToPlot = []
-keysToPlot = []
-if ions2plot == "NH4+"
-    for key in keys(STD_masses_dict)
-        append!(massesToPlot, STD_masses_dict[key][1][2])
-        push!(keysToPlot, key)
-    end
-    ion = "NH4+"
-elseif ions2plot == "H+"
-    for key in keys(STD_masses_dict)
-        append!(massesToPlot, STD_masses_dict[key][1][1])
-        push!(keysToPlot, key)
-    end
-    ion = "H+"
-elseif ions2plot == "all"
-    for key in ["TMB"] # you choose, which
-        append!(massesToPlot, STD_masses_dict[key][1])
-    end
-    ion = "H+"
-end
-
-# massesToPlot = massLibrary.FullPrimaryionslist_NH4soft
-
-##################################
-# plot raw data and select filters
-##################################
-
-(tracesFig, tracesAx, measResult) = PlotFunctions.plotTracesFromHDF5(file, massesToPlot;
-    plotHighTimeRes = false,
-    smoothing = 1,
-    timeFrame2plot = (plotStart, plotEnd)
-    )
+(humDat_random, fig_random, ax_random) = load_plotAtemluftData(random_file, flight_fp, partector_file; header_co2=2, apply_partector_offset=false)
 
 
-# show bg data as well
-(tracesFig_bg, tracesAx_bg, measResult_bg) = PlotFunctions.plotTracesFromHDF5(bg_file, massesToPlot;
-    plotHighTimeRes = false,
-    smoothing = 1,
-    timeFrame2plot = (plotStart, plotEnd)
-    )
-
-# plot licor data into same figure
-humDat = PlotFunctions.load_plotLicorData(humfile; ax=tracesAx, header=2)
-tracesFig.tight_layout()
-
-humDat_bg = PlotFunctions.load_plotLicorData(humfile; ax=tracesAx_bg, header=2)
-tracesFig_bg.tight_layout()
-
-#######################################
-# calculate and plot calibration points
-#######################################
-
-"""
-    humcal_getHumidityDependentSensitivityOfBG(mRes, humdat; signaltimes=[DateTime(0),DateTime(3000)], pptInInlet=1.0)
-
-    Calculate the humidity-dependent sensitivity of the measurement result `mRes`
-    using the humidity data `humdat`. The sensitivity is calculated as the ratio
-    of the measured traces (corrected for mass-dependent transmission) to the
-    known ppt in the inlet, for the specified signal times.
-
-    # Arguments
-    - `mRes::MeasurementResult`: The measurement result containing traces and times.
-    - `humdat::DataFrame`: The humidity data containing DateTime and humidity values.
-    - `signaltimes::Vector{DateTime}`: A vector with two DateTime values specifying
-      the start and end times for signal averaging.
-    - `pptInInlet::Float64`: The known ppt concentration in the inlet.
-
-    # Returns
-    - `calibData_noNaN::Array{Float64,2}`: The calibration data (sensitivity) without NaN values.
-    - `hums_noNaN::Vector{Float64}`: The corresponding humidity values without NaN entries.
-"""
-function humcal_getHumidityDependentSensitivityOfBG(mRes,humdat; mRes_bg=[],humdat_bg=[],signaltimes=[DateTime(0),DateTime(3000)],pptInInlet=1.0)
-	
-    # if bg is given, get bg humidity dependency and subtract bg
-    if !isempty(mRes_bg) && !isempty(humdat_bg)
-        hums_bg = IntpF.interpolateSelect(mRes_bg.Times,humdat_bg.DateTime,humdat_bg[!,"H₂O_(mmol_mol⁻¹)"];selTimes=signaltimes)
-        Traces_dcps_bg = mRes_bg.Traces .* transpose(sqrt.(100 ./mRes_bg.MasslistMasses)) # duty cycle correction
-        calibData_bg = (Traces_dcps_bg)./(pptInInlet)     # umrechnung in ppb
-
-        # delete for Nans
-        calibData_bg_noNaN = calibData_bg[.!(vec(all(isnan.(calibData_bg),dims=2))),:]
-        hums_bg_noNaN = hums_bg[.!(vec(all(isnan.(calibData_bg),dims=2))),:]
-
-        for (i, m) in enumerate(measResult.MasslistMasses)
-            println("Fitting mass: ", m)
-            (param, stderror, fitlabel) = CalF.fitParameters_DoubleExponential(hums_bg_noNaN, calibData_bg_noNaN[:, i])
-            push!(fitParams, param)
-            push!(fitParamErrors, stderror)
-            plot(hum4plot, CalF.DoubleExponential(hum4plot, param),
-            color=colornames[i],
-            label="m/z $(round(m,digits=3)), $(MasslistFunctions.sumFormulaStringFromCompositionArray(measResult.MasslistCompositions[:,i])) -- sens(AH) = $(round(param[1],sigdigits=3)) * exp(-$(round(param[2],sigdigits=3))*AH) + $(round(param[3],sigdigits=3))*exp(-$(round(param[4],sigdigits=3))*AH) + $(round(param[5],sigdigits=3))")
-        end
-    end
-
-
-    hums = IntpF.interpolateSelect(mRes.Times,humdat.DateTime,humdat[!,"H₂O_(mmol_mol⁻¹)"];selTimes=signaltimes)
-
-	Traces_dcps = mRes.Traces .* transpose(sqrt.(100 ./mRes.MasslistMasses)) # duty cycle correction
-
-    calibData = (Traces_dcps)./(pptInInlet)     # umrechnung in ppb
-    #calibData_std_i = (signalVShum_std)./(pptInInlet)
-
-	# delete for Nans
-	calibData_noNaN = calibData[.!(vec(all(isnan.(calibData),dims=2))),:]
-	#calibData_std_noNaN = calibData_std[.!(vec(all(isnan.(calibData),dims=2))),:]
-	hums_noNaN = hums[.!(vec(all(isnan.(calibData),dims=2))),:]
-
-	return (calibData_noNaN,vec(hums_noNaN))
-end
-
-calibData_bg, humidities_bg = humcal_getHumidityDependentSensitivityOfBG(measResult_bg, humDat_bg;
-    pptInInlet=1000)
-
-#TODO: get humidity dependent bg and subtract from measResult, but for now, just bg averaged over whole time
-#calibData, humidities = humcal_getHumidityDependentSensitivityOfBG(measResult, humDat;
-#    pptInInlet=1000)
-
-# put std to zeros for now
-calibData_std = zeros(size(calibData))
-
-println("calibData: ", size(calibData))
-println("humidities: ", size(humidities))
-
-#=
-(calibData, calibData_std, humidities) = CalF.humcal_getHumidityDependentSensitivity(measResult, humDat;
-    hums=avgs,
-    signaltimes=signalTimes,
-    pptInInlet=1000)
-
-println("calibData: ", calibData)
-println("calibData_std: ", calibData_std)
-println("humidities: ", humidities)
-=#
-
-fig = figure(figsize=(10, 6))
-(calibFig, calibAx) = PlotFunctions.scatter_errorbar(fig, measResult, humidities, calibData, calibData_std; ion=ion)
-xlabel("absolute humidity [mmol mol⁻¹]")
-ylabel("sensitivity [dcps ppt⁻¹]")
-
-################################
-# plot and export fit parameters
-################################
-
-hum4plot = collect(0:0.2:12)
-fitParams = []
-fitParamErrors = []
-colornames = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan", "tab:blue", "tab:orange", "tab:green", "tab:red"]
-
-println("n_x = ", length(humidities))
-println("n_y = ", size(calibData))
-println("size of keystoplot: ", size(keysToPlot))
-println("size of Masslist: ", size(measResult.MasslistMasses))
-
-if length(keysToPlot) == length(measResult.MasslistMasses)
-    for (i, m) in enumerate(measResult.MasslistMasses)
-        (param, stderror, fitlabel) = CalF.fitParameters_DoubleExponential(humidities, calibData[:, i])
-        push!(fitParams, param)
-        push!(fitParamErrors, stderror)
-        plot(hum4plot, CalF.DoubleExponential(hum4plot, param),
-            color=colornames[i],
-            label=string(round(measResult.MasslistMasses[i], digits=3), " - ", keysToPlot[i], ".", ions2plot, " -- sens(AH) = $(round(param[1],sigdigits=3)) * exp(-$(round(param[2],sigdigits=3))*AH) + $(round(param[3],sigdigits=3))*exp(-$(round(param[4],sigdigits=3))*AH) + $(round(param[5],sigdigits=3))"))
-    end
-else
-    println("Masses not found: ", setdiff(massesToPlot, measResult.MasslistMasses))
-    for (i, m) in enumerate(measResult.MasslistMasses)
-        println("Fitting mass: ", m)
-        (param, stderror, fitlabel) = CalF.fitParameters_DoubleExponential(humidities, calibData[:, i])
-        push!(fitParams, param)
-        push!(fitParamErrors, stderror)
-        plot(hum4plot, CalF.DoubleExponential(hum4plot, param),
-            color=colornames[i],
-            label="m/z $(round(m,digits=3)), $(MasslistFunctions.sumFormulaStringFromCompositionArray(measResult.MasslistCompositions[:,i])) -- sens(AH) = $(round(param[1],sigdigits=3)) * exp(-$(round(param[2],sigdigits=3))*AH) + $(round(param[3],sigdigits=3))*exp(-$(round(param[4],sigdigits=3))*AH) + $(round(param[5],sigdigits=3))")
-    end
-end
-
-legend()
-savefig("$(fp)calibration_lin_$(ions2plot).png")
-yscale("log")
-savefig("$(fp)calibration_log_$(ions2plot).png")
-
-fitParams2Export = hvcat(length(measResult.MasslistMasses), (fitParams[a][j] for a in 1:length(measResult.MasslistMasses), j in 1:length(fitParams[1]))...)
-fitParamErrors2Export = hvcat(length(measResult.MasslistMasses), (fitParamErrors[a][j] for a in 1:length(measResult.MasslistMasses), j in 1:length(fitParamErrors[1]))...)
-
-ExpF.exportFitParameters("$(fp)fitParameters.txt", fitParams2Export, fitParamErrors2Export,
-    measResult.MasslistMasses, measResult.MasslistCompositions;
-    fitfunction="sensitivity(AH) = p1 * exp.(-p2*AH) .+ p3*exp.(-p4*AH) .+ p5") #fit function as value?
-
-##########################################################################
-# correct fit parameters relative to Hexanone and save these also to file
-##########################################################################
-
-
-if round(massLibrary.HEXANONE_nh4[1],digits=3) in round.(measResult.MasslistMasses,digits=3)
-    fitParamsHex = fitParams2Export[:, isapprox.(measResult.MasslistMasses, massLibrary.HEXANONE_nh4[1], atol=0.0001)]
-    maxHexanone = maximum(CalF.DoubleExponential(hum4plot, vec(fitParamsHex)))
-
-    fitParams2Export_rel = fitParams2Export ./ [maxHexanone, 1, maxHexanone, 1, maxHexanone]
-    fitParamErrors2Export_rel = fitParamErrors2Export ./ [maxHexanone, 1, maxHexanone, 1, maxHexanone]
-
-    println("Exporting fit parameters relative to Hexanone to file.")
-    ExpF.exportFitParameters("$(fp)fitParameters_relative.txt", fitParams2Export_rel, fitParamErrors2Export_rel,
-        measResult.MasslistMasses, measResult.MasslistCompositions;
-        fitfunction="relative_sensitivity_to_Hexanone(AH) = p1 * exp.(-p2*AH) .+ p3*exp.(-p4*AH) .+ p5")
-
-    # TODO: plot relative sensitivities
-end
 
