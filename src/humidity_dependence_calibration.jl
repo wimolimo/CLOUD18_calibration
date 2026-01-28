@@ -1,3 +1,5 @@
+module HumidityDependenceCalibration
+
 using HDF5
 using PyCall
 using PyPlot
@@ -90,81 +92,112 @@ tracesFig_bg.tight_layout()
 #######################################
 
 """
-    humcal_getHumidityDependentSensitivityOfBG(mRes, humdat; signaltimes=[DateTime(0),DateTime(3000)], pptInInlet=1.0)
+    scatter_errorbar(measResult::ResultFileFunctions.MeasurementResult,xdata::Vector,ydata::Matrix,xerr::Matrix,yerr::Matrix;ion="NH4+")
 
-    Calculate the humidity-dependent sensitivity of the measurement result `mRes`
-    using the humidity data `humdat`. The sensitivity is calculated as the ratio
-    of the measured traces (corrected for mass-dependent transmission) to the
-    known ppt in the inlet, for the specified signal times.
-
-    # Arguments
-    - `mRes::MeasurementResult`: The measurement result containing traces and times.
-    - `humdat::DataFrame`: The humidity data containing DateTime and humidity values.
-    - `signaltimes::Vector{DateTime}`: A vector with two DateTime values specifying
-      the start and end times for signal averaging.
-    - `pptInInlet::Float64`: The known ppt concentration in the inlet.
-
-    # Returns
-    - `calibData_noNaN::Array{Float64,2}`: The calibration data (sensitivity) without NaN values.
-    - `hums_noNaN::Vector{Float64}`: The corresponding humidity values without NaN entries.
+plots traces as averaged datapoints with their repective given errors
 """
-function humcal_getHumidityDependentSensitivity(mRes,humdat; mRes_bg=[],signaltimes=[DateTime(0),DateTime(3000)],pptInInlet=1.0)
-	
-    #TODO: implement bg humidity dependence subtraction, add errors
-    # if bg is given, get bg average first
-    if !isempty(mRes_bg)
-
-        Traces_dcps_bg = mRes_bg.Traces .* transpose(sqrt.(100 ./mRes_bg.MasslistMasses)) # duty cycle correction for bg as well?
-        calibData_bg = (Traces_dcps_bg)./(pptInInlet)     # umrechnung in ppb
-
-        println("calibData_bg size: ", size(calibData_bg))
-        # delete for Nans
-        calibData_bg_avg = vec(mean(calibData_bg,dims=1))
-
-        # subtract bg from mRes
-        calibData = (Traces_dcps_bg - calibData_bg_avg)./(pptInInlet)
-    
-    else
-        calibData = (Traces_dcps)./(pptInInlet)
+function scatter_errorbar_xy(fig,measResult::ResultFileFunctions.MeasurementResult,xdata::Vector,ydata::Matrix,xerr::Vector,yerr::Matrix;ion="NH4+")
+    ax = subplot(111)
+    legStrings = []
+    if ion in ["all","H+","H3O+"]
+        for i = 1:length(measResult.MasslistMasses)
+            errorbar(xdata, ydata[:,i], yerr=yerr[:,i], xerr=xerr, marker="o", linestyle="None")
+            push!(legStrings,"m/z $(round(measResult.MasslistMasses[i],digits=3)) - $(MasslistFunctions.sumFormulaStringFromCompositionArray(measResult.MasslistCompositions[:,i])).H+")
+        end
+    elseif ion=="NH4+"
+        for i = 1:length(measResult.MasslistMasses)
+            errorbar(xdata, ydata[:,i], yerr=yerr[:,i], xerr=xerr, marker="o", linestyle="None")
+            push!(legStrings,"m/z $(round(measResult.MasslistMasses[i],digits=3)) - $(MasslistFunctions.sumFormulaStringFromCompositionArray((measResult.MasslistCompositions .- [0,0,3,0,1,0,0,0])[:,i])).NH4+")
+        end
     end
-
-
-	# delete for Nans
-	calibData_noNaN = calibData[.!(vec(all(isnan.(calibData),dims=2))),:]
-
-	#calibData_std_noNaN = calibData_std[.!(vec(all(isnan.(calibData),dims=2))),:]
-	hums_noNaN = hums[.!(vec(all(isnan.(calibData),dims=2))),:]
-
-	return (calibData_noNaN, vec(hums_noNaN))
+    legend(legStrings)
+    return fig,ax
 end
 
-calibData, humidities = humcal_getHumidityDependentSensitivity(measResult, humDat;
-    mRes_bg=measResult_bg,
-    pptInInlet=1000)
 
-#TODO: get humidity dependent bg and subtract from measResult, but for now, just bg averaged over whole time
-#calibData, humidities = humcal_getHumidityDependentSensitivityOfBG(measResult, humDat;
-#    pptInInlet=1000)
+"""
 
-# put std to zeros for now
-calibData_std = zeros(size(calibData))
+"""
+function humcal_getHumidityDependentSensitivity(mRes, humdat; mRes_bg=[], signaltimes=[DateTime(0),DateTime(3000)], pptInInlet=1.0)
+    # Ask for user input inside the function
+    print("Enter number of minutes to average humidity after each measurement (default 4): ")
+    input_str = readline()
+    avg_minutes = isempty(strip(input_str)) ? 4 : parse(Int, input_str)
 
-println("calibData: ", size(calibData))
-println("humidities: ", size(humidities))
+    # Filter mRes rows by signaltimes
+    mask_signal = (signaltimes[1] .< mRes.Times) .& (mRes.Times .< signaltimes[2])
+    sel_times = mRes.Times[mask_signal]
+    Traces_dcps = mRes.Traces[mask_signal, :] .* transpose(sqrt.(100 ./ mRes.MasslistMasses))   # duty cycle correction
 
-#=
-(calibData, calibData_std, humidities) = CalF.humcal_getHumidityDependentSensitivity(measResult, humDat;
-    hums=avgs,
-    signaltimes=signalTimes,
-    pptInInlet=1000)
+    # For each measurement time, compute mean/std of humidity in the next X minutes
+    hums_avg = Float64[]
+    hums_std = Float64[]
+    
+    for t_start in sel_times
+        t_end = t_start + Minute(avg_minutes)
+        
+        # Filter LiCOR data for this time window
+        mask_h2o = (humdat.DateTime .>= t_start) .& (humdat.DateTime .<= t_end)
+        h2o_vals = humdat[mask_h2o, "H₂O_(mmol_mol⁻¹)"]
+        
+        if isempty(h2o_vals)
+            push!(hums_avg, NaN)
+            push!(hums_std, NaN)
+        else
+            push!(hums_avg, mean(h2o_vals))
+            push!(hums_std, std(h2o_vals))
+        end
+    end
 
-println("calibData: ", calibData)
-println("calibData_std: ", calibData_std)
-println("humidities: ", humidities)
-=#
+    # Background subtraction (if mRes_bg provided)
+    if mRes_bg == []
+        println("No background subtraction applied.")
+        calibData = Traces_dcps ./ pptInInlet
+        calibData_std = zeros(size(calibData))
+    else
+        println("Background subtraction applied.")
+        Traces_bg = mRes_bg.Traces .* transpose(sqrt.(100 ./ mRes_bg.MasslistMasses))   # duty cycle correction
 
-fig = figure(figsize=(10, 6))
-(calibFig, calibAx) = PlotFunctions.scatter_errorbar(fig, measResult, humidities, calibData, calibData_std; ion=ion)
+        # simplify by taking global mean of background for now
+        bg_avg = mean(Traces_bg, dims=1)
+        bg_std = std(Traces_bg, dims=1)
+        
+        calibData = (Traces_dcps .- bg_avg) ./ pptInInlet
+        # standard deviation propagation (simplified)
+        calibData_std = (ones(size(calibData, 1)) * bg_std) ./ pptInInlet
+    end
+
+    # Clean up results (remove indices where calibData or humidity is NaN)
+    valid_mask = .!(vec(all(isnan.(calibData), dims=2))) .& .!isnan.(hums_avg)
+    
+    calibData_final = calibData[valid_mask, :]
+    calibData_std_final = calibData_std[valid_mask, :]
+    hums_avg_final = hums_avg[valid_mask]
+    hums_std_final = hums_std[valid_mask]
+
+    return (calibData_final, calibData_std_final, hums_avg_final, hums_std_final)
+end
+
+# Removed the readline logic from here and updated the function call
+calibData, calibData_std, humidities, hum_stds = humcal_getHumidityDependentSensitivity(measResult, humDat;
+    pptInInlet=1000,)
+    #mRes_bg=measResult_bg)
+
+# Calculate relative errors (standard deviation / mean)
+rel_err_x = hum_stds ./ humidities
+rel_err_y = calibData_std ./ calibData
+
+# Print relative error summary to console
+println("\n--- Error Analysis ---")
+println("Average Relative Error X (Humidity): ", round(mean(filter(!isnan, rel_err_x)) * 100, digits=4), "%")
+for i in 1:size(rel_err_y, 2)
+    avg_rel_y = mean(filter(!isnan, rel_err_y[:, i])) * 100
+    println("Average Relative Error Y (Mass $(round(measResult.MasslistMasses[i], digits=2))): ", round(avg_rel_y, digits=4), "%")
+end
+println("----------------------\n")
+
+ fig = figure(figsize=(10, 6))
+(calibFig, calibAx) = scatter_errorbar_xy(fig, measResult, humidities, calibData, hum_stds, calibData_std; ion=ions2plot)
 xlabel("absolute humidity [mmol mol⁻¹]")
 ylabel("sensitivity [dcps ppt⁻¹]")
 
@@ -172,7 +205,7 @@ ylabel("sensitivity [dcps ppt⁻¹]")
 # plot and export fit parameters
 ################################
 
-hum4plot = collect(0:0.2:12)
+hum4plot = collect(0:0.2:18)
 fitParams = []
 fitParamErrors = []
 colornames = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan", "tab:blue", "tab:orange", "tab:green", "tab:red"]
@@ -236,3 +269,4 @@ if round(massLibrary.HEXANONE_nh4[1],digits=3) in round.(measResult.MasslistMass
     # TODO: plot relative sensitivities
 end
 
+end # module HumidityDependenceCalibration
