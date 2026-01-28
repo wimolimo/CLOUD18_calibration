@@ -1,6 +1,6 @@
 using HDF5
-using PythonCall
-using PythonPlot
+using PyCall
+using PyPlot
 using Dates
 using CSV
 using DataFrames
@@ -108,46 +108,38 @@ tracesFig_bg.tight_layout()
     - `calibData_noNaN::Array{Float64,2}`: The calibration data (sensitivity) without NaN values.
     - `hums_noNaN::Vector{Float64}`: The corresponding humidity values without NaN entries.
 """
-function humcal_getHumidityDependentSensitivityOfBG(mRes,humdat; mRes_bg=[],humdat_bg=[],signaltimes=[DateTime(0),DateTime(3000)],pptInInlet=1.0)
+function humcal_getHumidityDependentSensitivity(mRes,humdat; mRes_bg=[],signaltimes=[DateTime(0),DateTime(3000)],pptInInlet=1.0)
 	
-    # if bg is given, get bg humidity dependency and subtract bg
-    if !isempty(mRes_bg) && !isempty(humdat_bg)
-        hums_bg = IntpF.interpolateSelect(mRes_bg.Times,humdat_bg.DateTime,humdat_bg[!,"H₂O_(mmol_mol⁻¹)"];selTimes=signaltimes)
-        Traces_dcps_bg = mRes_bg.Traces .* transpose(sqrt.(100 ./mRes_bg.MasslistMasses)) # duty cycle correction
+    #TODO: implement bg humidity dependence subtraction, add errors
+    # if bg is given, get bg average first
+    if !isempty(mRes_bg)
+
+        Traces_dcps_bg = mRes_bg.Traces .* transpose(sqrt.(100 ./mRes_bg.MasslistMasses)) # duty cycle correction for bg as well?
         calibData_bg = (Traces_dcps_bg)./(pptInInlet)     # umrechnung in ppb
 
+        println("calibData_bg size: ", size(calibData_bg))
         # delete for Nans
-        calibData_bg_noNaN = calibData_bg[.!(vec(all(isnan.(calibData_bg),dims=2))),:]
-        hums_bg_noNaN = hums_bg[.!(vec(all(isnan.(calibData_bg),dims=2))),:]
+        calibData_bg_avg = vec(mean(calibData_bg,dims=1))
 
-        for (i, m) in enumerate(measResult.MasslistMasses)
-            println("Fitting mass: ", m)
-            (param, stderror, fitlabel) = CalF.fitParameters_DoubleExponential(hums_bg_noNaN, calibData_bg_noNaN[:, i])
-            push!(fitParams, param)
-            push!(fitParamErrors, stderror)
-            plot(hum4plot, CalF.DoubleExponential(hum4plot, param),
-            color=colornames[i],
-            label="m/z $(round(m,digits=3)), $(MasslistFunctions.sumFormulaStringFromCompositionArray(measResult.MasslistCompositions[:,i])) -- sens(AH) = $(round(param[1],sigdigits=3)) * exp(-$(round(param[2],sigdigits=3))*AH) + $(round(param[3],sigdigits=3))*exp(-$(round(param[4],sigdigits=3))*AH) + $(round(param[5],sigdigits=3))")
-        end
+        # subtract bg from mRes
+        calibData = (Traces_dcps_bg - calibData_bg_avg)./(pptInInlet)
+    
+    else
+        calibData = (Traces_dcps)./(pptInInlet)
     end
 
 
-    hums = IntpF.interpolateSelect(mRes.Times,humdat.DateTime,humdat[!,"H₂O_(mmol_mol⁻¹)"];selTimes=signaltimes)
-
-	Traces_dcps = mRes.Traces .* transpose(sqrt.(100 ./mRes.MasslistMasses)) # duty cycle correction
-
-    calibData = (Traces_dcps)./(pptInInlet)     # umrechnung in ppb
-    #calibData_std_i = (signalVShum_std)./(pptInInlet)
-
 	# delete for Nans
 	calibData_noNaN = calibData[.!(vec(all(isnan.(calibData),dims=2))),:]
+
 	#calibData_std_noNaN = calibData_std[.!(vec(all(isnan.(calibData),dims=2))),:]
 	hums_noNaN = hums[.!(vec(all(isnan.(calibData),dims=2))),:]
 
-	return (calibData_noNaN,vec(hums_noNaN))
+	return (calibData_noNaN, vec(hums_noNaN))
 end
 
-calibData_bg, humidities_bg = humcal_getHumidityDependentSensitivityOfBG(measResult_bg, humDat_bg;
+calibData, humidities = humcal_getHumidityDependentSensitivity(measResult, humDat;
+    mRes_bg=measResult_bg,
     pptInInlet=1000)
 
 #TODO: get humidity dependent bg and subtract from measResult, but for now, just bg averaged over whole time
