@@ -92,6 +92,50 @@ tracesFig_bg.tight_layout()
 #######################################
 
 """
+    plot_humidity_dependent_calibration(humcalibfile, ionization)
+    
+Plot humidity-dependent calibration results and return calibration DataFrame.
+
+# Arguments
+- `humcalibfile::String`: Path to humidity calibration file (txt), relative to hexanone.
+- `ionization::String`: Ionization method used (e.g., "NH4+").
+
+# Returns
+- `calibDF::DataFrame`: DataFrame containing calibration results.
+
+# Saves
+- Humidity-dependent relative sensitivity to hexanone plot in the directory of `humcalibfile`.
+"""
+function plot_humidity_dependent_calibration(humcalibfile, ionization)
+    calibDF = CSV.read(humcalibfile, DataFrame; delim='\t', header=2)
+
+    #instead of CalF.plot_humdep_fromCalibParameters:
+    hum4plot=collect(0:0.2:18)
+    ionization=ionization
+
+    fig, ax = subplots(figsize=(10,6))
+    for (name, mass) in zip(calibDF[!, "Sumformula"], calibDF[!, "Mass"])
+        f = findfirst(calibDF[!, "Sumformula"] .== name)
+        if isnothing(f)
+            println("Warning: Could not find formula $name in calibration DataFrame.")
+            continue
+        end
+        # get all params:
+        params = calibDF[f, [:p1, :p2, :p3, :p4, :p5]] #fitparameters for this compound
+        humdep = CalF.applyFunction(hum4plot,params;functiontype=humdepcalibRelationship="double exponential")
+        ax.plot(hum4plot, humdep, label=string(round(mass, digits=3), " - ", name))
+    end
+    ax.set_xlabel("absolute humidity [mmol mol⁻¹]")
+    ax.set_ylabel("relative sensitivity to Hexanone []")
+    ax.set_title("Humidity-dependent calibration - Ionization: $(ionization)")
+    ax.legend()
+    fig.savefig("$(dirname(humcalibfile))/calibration_relHexanone_lin_$(ionization).png")
+    ax.set_yscale("log")
+    fig.savefig("$(dirname(humcalibfile))/calibration_relHexanone_log_$(ionization).png")
+
+    return calibDF
+end
+"""
     scatter_errorbar(measResult::ResultFileFunctions.MeasurementResult,xdata::Vector,ydata::Matrix,xerr::Matrix,yerr::Matrix;ion="NH4+")
 
 plots traces as averaged datapoints with their repective given errors

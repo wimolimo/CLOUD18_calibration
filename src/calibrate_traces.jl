@@ -716,7 +716,7 @@ function calibrate_traces_main(config::CalibrationConfig)
     if userinput == "y"
         licorDat = load_licor_data(config.dir_licor_data)
         licor_final = interpolate_licor_to_ptr_time(mResfinal, licorDat)
-        calibDF = CSV.read(config.humcalibfile, DataFrame; delim='\t', header=2)
+        calibDF = CSV.read(config.humcalibfile, DataFrame; delim='\t', header=2) #DataFrame, containing humidity dependent calibration parameters (p1-p5 with errors, double exponential fit) for different compounds including reference compound
         dcps_per_ppb, dcps_per_ppb_err, indices = build_calibration_traces_humid(mResfinal, summedPIs, licor_final, calibDF, hexVSpis_params, config.refName)
     elseif userinput == "n"
         dcps_per_ppb, dcps_per_ppb_err = build_calibration_traces_dry(mResfinal, summedPIs, hexVSpis_params, config.refName)
