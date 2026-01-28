@@ -361,6 +361,8 @@ function load_and_merge_results(resultfiles, primaryionslist)
     mResfinal_PIs = ResultFileFunctions.loadResults(resultfiles[1]; useAveragesOnly = true, massesToLoad = primaryionslist)
     mResfinal = ResultFileFunctions.loadResults(resultfiles[1]; useAveragesOnly = true)
 
+    #mResfinal_PIs.MasslistCompositions = #########TO DO: rewrite name from C10H15H+.NH4+ to C10H16.NH4+
+
     if length(resultfiles) > 1
         for i in 2:length(resultfiles)
             mResfinal_PIs = ResultFileFunctions.joinResultsTime(mResfinal_PIs, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = true, massesToLoad = primaryionslist))
@@ -419,7 +421,7 @@ end
 """
     build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, hexVSpis_params, refName)
 
-Build calibration traces for all compounds based on humidity-dependent and dry calibration.
+Build calibration traces for all compounds based on humidity-dependent and dry calibration. User selects wheather to apply humidity-dependent calibration.
 
 # Arguments
 - `mResfinal::MeasurementResult`: Measurement results containing mass list and time points.
@@ -431,6 +433,7 @@ Build calibration traces for all compounds based on humidity-dependent and dry c
 
 # Returns
 - `dcps_per_ppb::Matrix`: Calibration traces in dcps per ppb for all compounds, for each humidity and PI sum.
+- `dcps_per_ppb_err::Matrix`: Uncertainties of calibration traces in dcps per ppb.
 - `indices::Vector{Int}`: Indices of calibrated compounds.
 """
 function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, hexVSpis_params, refName)
@@ -465,43 +468,47 @@ function build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, he
 
     # wet sensitivity of different masses
     f_hum0 = CalF.applyFunction(zeros(length(mResfinal.Times)), ref_params; functiontype = "double exponential") #vector containing the zero humidity point of the humidity dependent calibration
-    
+    f_hum_err = zeros(length(mResfinal.Times)) #placeholder for later addition of relative humidity dependent calibration error. Note that this part holds ONLY true, if the errors from the humidity-dependent calibration fit are negligible compared to the errors of the fit to the primary ions
+
     println("Do you want to apply the humidity-dependent calibration for 1 oxygen compounds (recommended for T>0°C)? (y/n)")
     userinput = readline()
     if userinput == "y"
         f_hum = CalF.applyFunction(licor_final, ref_params; functiontype = "double exponential") # licor_final has length of times #use licor_final instead of CalF.applyFunction(fpfinal, humparams[1]; functiontype = humparams[3][1]) only if icor data is complete
+        
+        #dry / kinetic limit calibration for undef and >=2 O
         println("calibrating all compounds with >=2 oxygen atoms and undefined ones with reference $(refName) dry.")
+        dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .= f_hex .* f_hum0
+        dcps_per_ppb_err[:, (undeffilter .| twoplusoxygenfilter)] .= dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .* sqrt.(f_hex_err.^2 .+ 0.0.^2) # no humidity dependent calibration error for dry calibration
+
+        #humid / equilibrium calibration for 1 O
         println("calibrating all compounds with 1 oxygen atom humidity-dependent with reference $(refName).")
+        dcps_per_ppb[:, oneoxygenfilter] .= f_hex .* f_hum
+        dcps_per_ppb_err[:, oneoxygenfilter] .= dcps_per_ppb[:, oneoxygenfilter] .* sqrt.(f_hex_err.^2 .+ f_hum_err.^2) # combine errors from dry and humid calibration
+
+        indices = Int[]
+    
+        for row in eachrow(calibDF)
+            params = row[[:p1, :p2, :p3, :p4, :p5]]
+            index = findfirst(isapprox.(mResfinal.MasslistMasses, row.Mass; atol=0.0001)) #find masses in masslist matching compounds in calibDF (humidity dependent calibration data)
+            f_hum_row = CalF.applyFunction(licor_final, params; functiontype = "double exponential") 
+
+            if index isa Int
+                dcps_per_ppb[:, index] = f_hex .* f_hum_row
+                dcps_per_ppb_err[:, index] = dcps_per_ppb[:, index] .* sqrt.(f_hex_err.^2 .+ f_hum_err.^2) # combine errors from dry and humid calibration
+                push!(indices, index)
+            end
+        end
+        
     elseif userinput == "n"
         f_hum = f_hum0
         println("calibrating all compounds (except 0 oxygen compounds) dry with reference $(refName).")
+        dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter .| oneoxygenfilter)] .= f_hex .* f_hum0
+        dcps_per_ppb_err[:, (undeffilter .| twoplusoxygenfilter .| oneoxygenfilter)] .= dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter .| oneoxygenfilter)] .* sqrt.(f_hex_err.^2 .+ 0.0.^2) # no humidity dependent calibration error for dry calibration
+
     else
         error("Invalid input for humidity-dependent calibration choice. Please enter 'y' or 'n'.")
     end
 
-    f_hum_err = zeros(length(mResfinal.Times)) #placeholder for later addition of relative humidity dependent calibration error. Note that this part holds ONLY true, if the errors from the humidity-dependent calibration fit are negligible compared to the errors of the fit to the primary ions
-
-    #dry / kinetic limit calibration for undef and >=2 O
-    dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .= f_hex .* f_hum0
-    dcps_per_ppb_err[:, (undeffilter .| twoplusoxygenfilter)] .= dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .* sqrt.(f_hex_err.^2 .+ 0.0.^2) # no humidity dependent calibration error for dry calibration
-
-    #humid / equilibrium calibration for 1 O
-    dcps_per_ppb[:, oneoxygenfilter] .= f_hex .* f_hum
-    dcps_per_ppb_err[:, oneoxygenfilter] .= dcps_per_ppb[:, oneoxygenfilter] .* sqrt.(f_hex_err.^2 .+ f_hum_err.^2) # combine errors from dry and humid calibration
-
-    indices = Int[]
- 
-    for row in eachrow(calibDF)
-        params = row[[:p1, :p2, :p3, :p4, :p5]]
-        index = findfirst(isapprox.(mResfinal.MasslistMasses, row.Mass; atol=0.0001)) #find masses in masslist matching compounds in calibDF (humidity dependent calibration data)
-        f_hum_row = CalF.applyFunction(licor_final, params; functiontype = "double exponential") 
-
-        if index isa Int
-            dcps_per_ppb[:, index] = f_hex .* f_hum_row
-            dcps_per_ppb_err[:, index] = dcps_per_ppb[:, index] .* sqrt.(f_hex_err.^2 .+ f_hum_err.^2) # combine errors from dry and humid calibration
-            push!(indices, index)
-        end
-    end
 
     total_relative_error = sqrt.(f_hex_err .^2 .+ f_hum_err .^2)
     mean_relative_error = Statistics.mean(total_relative_error)
@@ -590,30 +597,9 @@ function plot_and_filter_directly_calibrated_traces(mResfinal, dcps_per_ppb, ind
     savefig(joinpath(resultfp, "DirectlyCalibratedTraces.png"))
     savefig(joinpath(resultfp, "DirectlyCalibratedTraces.pdf"))
 
-    #=
-    ifig = PlotFunctions.InteractivePlot("", ax)#################
-    PlotFunctions.getMouseCoords(ifig; datetime_x = true)
-
-    println("""You can now select start and end times of periods to delete, e.g. due to:
-        - ion source breakdown
-        - calibration residues
-        - other artifacts
-        Click with 'd' to select times.  Press 'q' + Enter to quit.""")
-
-    while true
-        sleep(0.1)
-        readline() == "q" && break
-    end
-
-    if length(ifig.deleteXlim) > 0 && iseven(length(ifig.deleteXlim))
-        for i in 1:2:length(ifig.deleteXlim)
-            mResfinal.Traces[ifig.deleteXlim[i].<= mResfinal.Times.<= ifig.deleteXlim[i+1], :] .= NaN
-        end
-    end
-    =#
-
     return mResfinal
 end
+################################# add filter or rename
 
 
 """
@@ -660,7 +646,7 @@ function export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderFor
         noNitrogen = false,
         onlySaneMasses = false,
         filterCrosstalkMasses=false,
-        pointsForSmoothing = 10)
+        pointsForSmoothing = 5)
     IndOfinterest = c[1]
     
     #or:
