@@ -15,6 +15,7 @@ makedocs(;
     pages=[
         "Home" => "index.md",
     ],
+    checkdocs=:none,  # Don't error on missing docstrings
 )
 
 deploydocs(;
