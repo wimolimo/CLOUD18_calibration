@@ -30,11 +30,11 @@ resultfiles = ["$(resultfp)/results/_result.hdf5"] #adjust filename, can add mul
 ionization = "NH4+" # "NH4+", "H+"...
 primaryionslist = [] #chosen by user
 refMass = TOFTracer2.massLibrary.HEXANONE_nh4[1] #mass of hexanone + NH4+
-refName = TOFTracer2.MasslistFunctions.sumFormulaStringFromCompositionArray(massLibrary.HEXANONE_nh4[4]; ion = "NH4+")
+refName = TOFTracer2.MasslistFunctions.sumFormulaStringFromCompositionArray(massLibrary.HEXANONE_nh4[4]; ion = "H+") #since createCompound adds H+ automatically -> C6H15ON.H+
 
 exportTraces = true # if true, check HeaderForExportDict below:
 HeaderForExportDict = Dict(
-        "title"=>"Exampletitle...",
+        "title"=>"Example calibration of Nonanal data set from CLOUD18 campaign",
         "level"=>2,
         "version"=>"01",
         "authorname_mail"=>"Ruth, Clea clea.ruth@uibk.ac.at; Wittler, Timo wittler.timo@uibk.ac.at",
@@ -53,17 +53,18 @@ HeaderForExportDict = Dict(
 # run CLOUD18_calibration.HumidityDependence.run_humidity_dependence_calibration to get humcalibfile
 
 # 2. Run calibrate_traces
-
-println("Do you want to apply the humidity-dependent calibration (recommended for T>0°C)? (y/n)")
-userinput = readline()
-while !(userinput in ["y", "n"])
+let
+        println("Do you want to apply the humidity-dependent calibration (recommended for T>0°C)? (y/n)")
+        userinput = readline()
+        while !(userinput in ["y", "n"])
         println("Invalid input. Please enter 'y' for yes or 'n' for no.")
         userinput = readline()
-end
-if userinput == "y"
+        end
+        if userinput == "y"
         CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
-elseif userinput == "n"
+        elseif userinput == "n"
         CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+        end
 end
 
 # 3. Run Inlet Loss Correction

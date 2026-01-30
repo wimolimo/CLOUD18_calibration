@@ -187,7 +187,7 @@ Interactively select dry calibration data points to exclude from fit and return 
 """
 function dryCal_selectPIandRefDataInteractive(drycalibsfile::String, refMass, primaryionslist) #modified from CalibrationFunctions.dryCal_selectPIandRefDataFromIFIG
 
-    dryCalibFig, dryCalibAx, mResDryCalibs, primaryiontraces, referencetraces = scatterDryCalibs2(drycalibsfile; referenceMasses=refMass, primaryionslist)
+    dryCalibFig, dryCalibAx, mResDryCalibs, primaryiontraces, referencetraces = scatterDryCalibs2(drycalibsfile; referenceMasses=[refMass], primaryions=primaryionslist)
     # println("please give the minimum y-value to show")
     # dryCalibAx.set_ylim(bottom=parse(Int, readline()))
     println("How many dry calibration data points do you want to exclude from the fit?")
@@ -284,14 +284,14 @@ end
 
 function ask_for_PIList()
     println("Which primary ions will be used for the calibration? For the full list for NH4+ soft ionization press 'f', for using only NH4+ press 'o'.")
-    userinput1 = readline()
-    while !(userinput1 in ["f", "o"])
+    userinput = readline()
+    while !(userinput in ["f", "o"])
         println("Invalid input. Please enter 'f' for full list or 'o' for NH4+ only.")
-        userinput1 = readline()
+        userinput = readline()
     end
-    if userinput1 == "f"
+    if userinput == "f"
         primaryionslist = massLibrary.FullPrimaryionslist_NH4soft #adding all possible water and ammonium clusters: [18.033836, 19.017856000000002, 35.060396, 36.044416, 37.028436, 52.086956, 53.070975999999995, 54.054996, 72.065576]
-    elseif userinput1 == "o"
+    elseif userinput == "o"
         primaryionslist = MasslistFunctions.massFromComposition(H=3, N=1) #H+ is added automatically in massFromComposition
     end
 
@@ -450,7 +450,6 @@ Build calibration traces for all compounds. Two methods are available:
 
 # Returns
 - `dcps_per_ppb::Matrix`: Calibration traces in dcps per ppb for all compounds.
-- `dcps_per_ppb_err::Matrix`: Uncertainties of calibration traces in dcps per ppb.
 - `indices::Vector{Int}`: (Humidity dependent method only) Indices of individually calibrated compounds.
 """
 function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName, licor_final, calibDF)
@@ -749,8 +748,8 @@ function calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resu
 end
 
 function calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
-    hexVSpis_params = load_hexVSpis_params(drycalibsfile, refMass, primaryionslist)
     primaryionslist = ask_for_PIList()
+    hexVSpis_params = load_hexVSpis_params(drycalibsfile, refMass, primaryionslist)
     mResfinal, mResfinal_PIs = load_and_merge_results(resultfiles, primaryionslist) #PI: (58, 1) #rest of masses: (58, 1195)
     summedPIs = compute_summed_primary_ions(mResfinal_PIs)
 
