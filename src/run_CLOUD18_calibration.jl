@@ -23,7 +23,7 @@ drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5") #
 #files for humidity dependent calibration and resulting file with fit parameters
 std_fp = joinpath(dir_calib_data, "Humidity-dependent_std", "results") #folder containing humidity dependent calibration data
 std_file = joinpath(std_fp, "_result.hdf5") #file to be used for humidity dependent calibration
-bg_file = joinpath(std_fp, "_result.hdf5") #background file for humidity dependent calibration
+bg_file = joinpath(dir_calib_data, "humidity_dependent_BG", "results", "_result.hdf5") #background file for humidity dependent calibration
 hum_file = joinpath(dir_licor_data, "2025-11-21.txt") #licor file for humidity dependent calibration
 humcalibfile = joinpath(std_fp, "fitParameters_relative.txt") #humcalibfp
 
