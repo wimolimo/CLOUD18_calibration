@@ -38,11 +38,11 @@ HeaderForExportDict = Dict(
         "title"=>"Exampletitle...",
         "level"=>2,
         "version"=>"01",
-        "authorname_mail"=>"Ruth, Clea clea.ruth@student.uibk.ac.at",
+        "authorname_mail"=>"Ruth, Clea clea.ruth@uibk.ac.at; Wittler, Timo wittler.timo@uibk.ac.at",
         "units"=>"ppt",
         "addcomment"=>"The data have been humidity-depently calibrated with Hexanone as reference (Onr=1), compounds with Onr>1 are calibrated with kinetic limit. All traces have been corrected to the duty-cycle-corrected primary ion trace. Uncertainty roughly factor 3. Not transmission-corrected yet.\n",
         "threshold"=>0,
-        "nrrows_addcomment"=>4
+        "nrrows_addcomment"=>1
         )
 
 

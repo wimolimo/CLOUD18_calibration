@@ -274,8 +274,8 @@ Propagates errors from:
 - Verify column name: `H₂O_(mmol_mol⁻¹)` in header
 
 ### Interactive Selection Tips
-- Zoom and pan before selecting points
-- Press 'c' on keyboard while hovering over outliers
+- Click in figure window before selecting points
+- Press 'c' on keyboard while hovering over primary ion outliers
 - Select exactly the number of points requested
 - Program continues on automatcally after selecting the number of points requested
 
@@ -285,7 +285,7 @@ Propagates errors from:
 - **TOFTracer2**: Core mass spectrometry data processing
 - **CSV, DataFrames**: Tabular data handling
 - **HDF5**: Binary result file format
-- **PyPlot/PythonPlot**: Plotting via matplotlib
+- **PyPlot**: Plotting via matplotlib
 - **LsqFit**: Nonlinear curve fitting
 - **Statistics, Dates**: Standard library utilities
 
