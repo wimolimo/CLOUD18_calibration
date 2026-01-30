@@ -51,8 +51,7 @@ HeaderForExportDict = Dict(
 #########################
 
 # 1. Run humidity dependence calibration
-#CLOUD18_calibration.HumidityDependence.humidity_dependence_calibration_main() #ANPASSEN
-#humcalibfile = humcalibfp #from humidity dependence calibration
+# run CLOUD18_calibration.HumidityDependence.run_humidity_dependence_calibration to get humcalibfile
 
 # 2. Run calibrate_traces
 config = CLOUD18_calibration.CalibrateTraces.CalibrationConfig(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, primaryionslist, refMass, refName, exportTraces, HeaderForExportDict)

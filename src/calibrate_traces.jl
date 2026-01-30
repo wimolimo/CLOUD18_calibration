@@ -336,7 +336,7 @@ function load_hexVSpis_params(drycalibsfile::String)
     if HDF5.ishdf5(drycalibsfile)
         hexVSpis_params = dryCal_selectPIandRefDataInteractive(drycalibsfile)
         hexVSpis_params2export = vcat(hexVSpis_params[3], ["parameters" "errors"], hcat(hexVSpis_params[1], hexVSpis_params[2]))
-        CSV.write("$(dirname(drycalibsfile))Hexanone_VS_PIs_params.csv", DataFrame(hexVSpis_params2export, :auto)) #save parameters for later use?
+        CSV.write("$(dirname(drycalibsfile))\\Hexanone_VS_PIs_params.csv", DataFrame(hexVSpis_params2export, :auto)) 
     else
         a = CSV.read(drycalibsfile, DataFrame, header=[2])
         b = CSV.read(drycalibsfile, DataFrame; footerskip=3, header=false)
@@ -345,8 +345,6 @@ function load_hexVSpis_params(drycalibsfile::String)
     return hexVSpis_params
 end
 # change to load from CSV if exists?
-
-
 
 
 """
@@ -448,24 +446,27 @@ end
 
 
 ##################################################################
-#v function with two methods, depending on user input
-"""
-    build_calibration_traces(mResfinal, summedPIs, licor_final, calibDF, hexVSpis_params, refName)
 
-Build calibration traces for all compounds based on humidity-dependent and dry calibration. Calibrate compounds with >=2 oxygen atoms and undefined ones dry, compounds with 1 oxygen atom humidity-dependently and compounds from the gas standard individually humidity dependent.
+"""
+    build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName, licor_final, calibDF)
+    build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName)
+
+Build calibration traces for all compounds. Two methods are available:
+- With humidity calibration: Uses humidity-dependent calibration for compounds with 1 oxygen atom, dry calibration for >=2 oxygen and undefined compounds, and compounds from the gas standard individually humidity dependent.
+- Dry calibration only: Applies dry calibration to all compounds except 0 oxygen compounds.
 
 # Arguments
 - `mResfinal::MeasurementResult`: Measurement results containing mass list and time points.
 - `summedPIs::Vector`: Summed primary ion intensities in dcps.
-- `licor_final::Vector`: Interpolated Licor humidity data aligned with measurement results time points.
-- `calibDF::DataFrame`: Humidity dependent calibration data.
 - `hexVSpis_params::Tuple`: Hexanone vs primary ion parameters.
 - `refName::String`: Reference compound name.
+- `licor_final::Vector`: (Humidity dependent method only) Interpolated Licor humidity data aligned with measurement results time points.
+- `calibDF::DataFrame`: (Humidity dependent method only) Humidity dependent calibration data.
 
 # Returns
-- `dcps_per_ppb::Matrix`: Calibration traces in dcps per ppb for all compounds, for each humidity and PI sum.
+- `dcps_per_ppb::Matrix`: Calibration traces in dcps per ppb for all compounds.
 - `dcps_per_ppb_err::Matrix`: Uncertainties of calibration traces in dcps per ppb.
-- `indices::Vector{Int}`: Indices of calibrated compounds.
+- `indices::Vector{Int}`: (Humidity dependent method only) Indices of individually calibrated compounds.
 """
 function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName, licor_final, calibDF)
 
@@ -524,21 +525,6 @@ end
 #added error here, but f_hum_err is still zero
 #compounds with 0 oxygen are ignored (zero sensitivity)
 
-"""
-    build_calibration_traces(mResfinal, summedPIs,  hexVSpis_params, refName)
-
-Build dry calibration traces for all compounds except 0 oxygen compounds.
-
-# Arguments
-- `mResfinal::MeasurementResult`: Measurement results containing mass list and time points.
-- `summedPIs::Vector`: Summed primary ion intensities in dcps.
-- `hexVSpis_params::Tuple`: Hexanone vs primary ion parameters.
-- `refName::String`: Reference compound name.
-
-# Returns
-- `dcps_per_ppb::Matrix`: Calibration traces in dcps per ppb for all compounds.
-- `dcps_per_ppb_err::Matrix`: Uncertainties of calibration traces in dcps per ppb.
-"""
 function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName)
 
     undeffilter = BitVector(sum(mResfinal.MasslistCompositions; dims=1)[1, :] .== 0)
@@ -575,7 +561,7 @@ Plot calibration traces for selected compounds and save the plots.
 # Saves
 - Calibration traces plot as PNG and PDF files.
 """
-function plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp)
+function plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp, ionization)
     fig, ax = subplots(figsize = (10, 6))
 
     ax.set_xlabel("time [UTC]")
@@ -584,7 +570,7 @@ function plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, re
     
     for i in indices
         ax.plot(mResfinal.Times, dcps_per_ppb[:, i],
-            label = "$(round(mResfinal.MasslistMasses[i],digits=2)) * $(MasslistFunctions.sumFormulaStringFromCompositionArray(mResfinal.MasslistCompositions[:,i]))"
+            label = "$(round(mResfinal.MasslistMasses[i],digits=2)) * $(MasslistFunctions.sumFormulaStringFromCompositionArray(mResfinal.MasslistCompositions[:,i], ion=ionization))"
         )
     end
 
@@ -613,7 +599,7 @@ Plot directly calibrated traces.
 # Saves
 - Directly calibrated traces plot as PNG and PDF files.
 """
-function plot_directly_calibrated_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp)
+function plot_directly_calibrated_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp, ionization)
     fig = figure(figsize=(10,6))
     ax = subplot(111)
     ax.set_yscale("log")
@@ -622,7 +608,7 @@ function plot_directly_calibrated_traces(mResfinal, dcps_per_ppb, summedPIs, ind
     
     legStrings = Array{String,1}(undef, length(indices)+1)
     for (i, idx) in enumerate(indices)
-        legStrings[i] = "m/z = " * string(round(mResfinal.MasslistMasses[idx], digits=2)) * " - " * MasslistFunctions.sumFormulaStringFromCompositionArray(mResfinal.MasslistCompositions[:, idx])
+        legStrings[i] = "m/z = " * string(round(mResfinal.MasslistMasses[idx], digits=2)) * " - " * MasslistFunctions.sumFormulaStringFromCompositionArray(mResfinal.MasslistCompositions[:, idx], ion=ionization)
     end
     legStrings[end] = "summed primary ions [dcps]"
     
@@ -769,8 +755,8 @@ function calibrate_traces_main(config::CalibrationConfig)
         calibDF = CSV.read(config.humcalibfile, DataFrame; delim='\t', header=2) #DataFrame, containing humidity dependent calibration parameters (p1-p5 with errors, double exponential fit) for different compounds including reference compound
         dcps_per_ppb, dcps_per_ppb_err, indices = build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, config.refName, licor_final, calibDF)
         
-        plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, config.resultfp) #for directly calibrated masses
-        plot_directly_calibrated_traces(mResfinal, dcps_per_ppb, summedPIs, indices, config.resultfp)
+        plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, config.resultfp, config.ionization) #for directly calibrated masses
+        plot_directly_calibrated_traces(mResfinal, dcps_per_ppb, summedPIs, indices, config.resultfp, config.ionization)
     
     elseif userinput2 == "n"
         dcps_per_ppb, dcps_per_ppb_err = build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, config.refName)
