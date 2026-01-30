@@ -8,6 +8,7 @@ using CLOUD18_calibration: calibrate_traces_main
 using TOFTracer2
 using TOFTracer2.MasslistFunctions
 using TOFTracer2: massLibrary
+using Dates
 
 #################################
 # Define parameters for calibration
@@ -18,7 +19,7 @@ dir_calib_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Calibration")
 dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor") #select licor data where times match the measurement to be calibrated: rename file to use with licor_restofthename.txt
 
 #dry calibration file # this ican be either the processed file of the dry calibrations or the CSV file containing the exported hexanone vs primary ion parameters for loading them:
-drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5") #or "dry_std\\resultsHexanone_VS_PIs_params.csv"
+drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5") #or "dry_std\\results\\Hexanone_VS_PIs_params.csv"
 
 #files for humidity dependent calibration and resulting file with fit parameters
 std_fp = joinpath(dir_calib_data, "Humidity-dependent_std", "results") #folder containing humidity dependent calibration data
@@ -48,20 +49,24 @@ HeaderForExportDict = Dict(
         "nrrows_addcomment"=>1
         )
 
+#select time window for inlet loss correction
+timerange=[DateTime(2000,1,1), DateTime(3000,1,1)]
 
 #########################
 # Run calibration steps
 #########################
 
 # 1. Run humidity dependence calibration
-println("Do you want to (re)run the humidity dependence calibration? (y/n)")
-input_humcalib = readline()
-while !(input_humcalib in ["y", "n"])
-        println("Invalid input. Please enter 'y' for yes or 'n' for no.")
+let
+        println("Do you want to (re)run the humidity dependence calibration? (y/n)")
         input_humcalib = readline()
-end
-if input_humcalib == "y"
-    CLOUD18_calibration.HumidityDependenceCalibration.run_humidity_dependence_calibration(std_fp, std_file, bg_file, hum_file)
+        while !(input_humcalib in ["y", "n"])
+                println("Invalid input. Please enter 'y' for yes or 'n' for no.")
+                input_humcalib = readline()
+        end
+        if input_humcalib == "y"
+        CLOUD18_calibration.HumidityDependenceCalibration.run_humidity_dependence_calibration(std_fp, std_file, bg_file, hum_file)
+        end
 end
 
 # 2. Run calibrate_traces
@@ -69,15 +74,15 @@ let
         println("Do you want to apply the humidity-dependent calibration (recommended for T>0°C)? (y/n)")
         userinput = readline()
         while !(userinput in ["y", "n"])
-        println("Invalid input. Please enter 'y' for yes or 'n' for no.")
-        userinput = readline()
+                println("Invalid input. Please enter 'y' for yes or 'n' for no.")
+                userinput = readline()
         end
         if userinput == "y"
-        CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+                CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
         elseif userinput == "n"
-        CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+                CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
         end
 end
 
 # 3. Run Inlet Loss Correction
-CLOUD18_calibration.InletLossCorrection.run_inlet_loss_correction(resultfp; timerange=[DateTime(2000,1,1), DateTime(3000,1,1)], export_fp=resultfp)
+CLOUD18_calibration.InletLossCorrection.run_inlet_loss_correction(resultfp; timerange=timerange, export_fp=resultfp)
