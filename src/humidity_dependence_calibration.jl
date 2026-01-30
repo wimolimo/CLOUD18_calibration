@@ -233,7 +233,7 @@ function run_humidity_dependence_calibration(fp::String, calibFile_std::String, 
 
     # plot Licordata into raw plot
     humdat = PlotFunctions.load_plotLicorData(humFile; ax=axTraces, header=2)
-    humdat_bg = PlotFunctions.load_plotLicorData(calibFile_bg; ax=axTraces_bg, header=2)
+    humdat_bg = PlotFunctions.load_plotLicorData(humFile; ax=axTraces_bg, header=2)
 
     # 3. Time Averaging Logic
     calibData, calibData_std, hums_avg, hums_stds, win = getHumiditySensitivity(measResult, humdat, measResult_bg; signaltimes=plotTime)
