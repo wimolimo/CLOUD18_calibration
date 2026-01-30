@@ -28,7 +28,7 @@ resultfp = joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #chang
 resultfiles = ["$(resultfp)/results/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
 
 ionization = "NH4+" # "NH4+", "H+"...
-primaryionslist = [] # leave empty -> default: adding all possible water and ammonium clusters ??????????????
+primaryionslist = [] #chosen by user
 
 refMass = massLibrary.HEXANONE_nh4[1] #mass of hexanone + NH4+ from julia package manualMassLibrary.jl
 refName = TOFTracer2.MasslistFunctions.sumFormulaStringFromCompositionArray(massLibrary.HEXANONE_nh4[4]; ion = "")
