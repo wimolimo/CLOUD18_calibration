@@ -78,23 +78,31 @@ TOFTracer2 = {path = "..\\TOF-Tracer2-dev"}
 
 ### Complete 3-Step Process
 
+```julia
+include("src/run_CLOUD18_calibration.jl")
+```
+
 #### Step 1: Humidity Dependence Calibration (Optional)
 Generate humidity-dependent parameters from controlled standard gas measurements at varying absolute humidity:
 
-```julia
-# Run first to create humcalibfile
-include("src/humidity_dependence_calibration.jl")
-```
-Only has to be done once.
+The script will ask you, whether you want to do the humidity dependence calibration, since it is only
+necessary to do once. If you want to do it, the script will ask for the amount of minutes you want to average
+the humidity for each humidity step. The default is 4 min, which you can use by just pressing Enter.
 
-**Output**: `fitParameters_relative.txt` with double exponential fit parameters (p1-p5) for each compound
+The output will then give you four figures with (1) the calibration Traces and their humidities (also the
+time averages are shaded), (2) the calibration Traces of the background measurement, (3) the Double Exponential
+Fit of the Humidity Dependence of the Sensitivity and (4) the Double Exponential Fit of the Humidity Dependence
+of the Sensitivity relative to Hexanone. (3) and (4) are being saved as a png file, while the fit parameters relative
+and not relative to Hexanone get written into a txt file.
+
+**Output**: 
+- `fitParameters.txt` with double exponential fit parameters (p1-p5) for each compound
+- `fitParameters_relative.txt` with double exponential fit parameters (p1-p5) for each compound relative to Hexanone
 
 #### Step 2: Trace Calibration (Main Step)
 Calibrate all measurement data using dry and potentially humidity-dependent parameters:
 
-```julia
-include("src/run_CLOUD18_calibration.jl")
-```
+
 
 The script will interactively guide you through the workflow:
 - Ask whether to use humidity-dependent or dry-only calibration
