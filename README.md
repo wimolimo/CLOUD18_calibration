@@ -5,7 +5,7 @@
 [![Build Status](https://github.com/wimolimo/CLOUD18_calibration.jl/actions/workflows/CI.yml/badge.svg?branch=master)](https://github.com/wimolimo/CLOUD18_calibration.jl/actions/workflows/CI.yml?query=branch%3Amaster)
 [![Coverage](https://codecov.io/gh/wimolimo/CLOUD18_calibration.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/wimolimo/CLOUD18_calibration.jl)
 
-A Julia package for calibrating Proton Transfer Reaction Time-of-Flight Mass Spectrometry (PTR-ToF-MS) data from the CLOUD18 campaign. This package provides tools for both dry and humidity-dependent calibration of organic compound traces using primary ion normalization.
+A Julia package for calibrating Proton Transfer Reaction Time-of-Flight Mass Spectrometry (PTR-ToF-MS) data from the CLOUD18 campaign. This package provides tools for both dry and humidity-dependent calibration of organic compound traces, normalizing to primary ions, using hexanone as reference. Also, it is corrected for duty-cycle and inlet-loss.
 
 ## Table of Contents
 - [Overview](#overview)
@@ -24,24 +24,24 @@ A Julia package for calibrating Proton Transfer Reaction Time-of-Flight Mass Spe
 ## Overview
 
 CLOUD18_calibration processes PTR-ToF-MS measurement data by:
-1. Normalizing signals to primary ion intensities (e.g., NH₄⁺ or H₃O⁺)
+1. Normalizing signals to primary ion intensities (e.g. NH4⁺ or the full primary ion list of NH4+ and clusters)
 2. Applying dry calibration factors from standard gas measurements
 3. Optionally applying humidity-dependent calibration for compounds sensitive to water vapor
-4. Converting raw detector signals (dcps) to mixing ratios (ppb/ppt)
+4. Converting raw detector signals (dcps) to concentrations (ppb)
 
-The package uses hexanone (C₆H₁₂O) as the primary reference compound and supports calibration of hundreds of organic compounds simultaneously.
+The package uses hexanone (C6H12O) as the primary reference compound and supports calibration of hundreds of organic compounds simultaneously.
 
 ## Features
 
 - **Flexible Calibration**: Choose between dry-only or humidity-dependent calibration
 - **Primary Ion Normalization**: Automatically corrects for ionization source variations
 - **Duty Cycle Correction**: Accounts for mass-dependent detection efficiency
-- **Interactive Selection**: Manually exclude outliers from calibration fits
-- **Composition-Based Calibration**: Different strategies for compounds based on oxygen content
+- **Composition-Based Calibration**: Different strategies for compounds based on oxygen content:
   - 0 O: No calibration (zero sensitivity)
   - 1 O: Humidity-dependent calibration (equilibrium)
   - ≥2 O: Dry calibration (kinetic limit)
-- **Multiple Fit Functions**: Power, linear, exponential, and double exponential fits
+- **Interactive Selection of included Data Points**: Manually exclude outliers from calibration fits
+- **Interactive Selection of Fit Functions**: Choose between Power or linear fit (soon exponential and double exponential)
 - **Uncertainty Propagation**: Error estimates for calibration factors
 - **Export to CLOUD Format**: Direct export of calibrated traces with metadata headers
 
@@ -74,18 +74,6 @@ pkg> precompile
 TOFTracer2 = {path = "..\\TOF-Tracer2-dev"}
 ```
 
-## Quick Start
-
-```julia
-include("src/run_CLOUD18_calibration.jl")
-
-# The script will guide you through:
-# 1. Selecting primary ions (full list or NH4+ only)
-# 2. Choosing humidity-dependent vs. dry calibration
-# 3. Selecting calibration data points interactively
-# 4. Choosing fit function type (linear, power, exponential)
-```
-
 ## Calibration Workflow
 
 ### Complete 3-Step Process
@@ -101,11 +89,17 @@ include("src/humidity_dependence_calibration.jl")
 **Output**: `fitParameters_relative.txt` with double exponential fit parameters (p1-p5) for each compound
 
 #### Step 2: Trace Calibration (Main Step)
-Calibrate all measurement data using dry and/or humidity-dependent parameters:
+Calibrate all measurement data using dry and humidity-dependent parameters:
 
 ```julia
 include("src/run_CLOUD18_calibration.jl")
 ```
+
+The script will guide you through:
+- Selecting primary ions (full list or NH4+ only)
+- Choosing humidity-dependent vs. dry calibration
+- Selecting calibration data points interactively
+- Choosing fit function type for reference vs PI signal (linear, power)
 
 **Inputs**:
 - Dry calibration data (HDF5 or CSV)
@@ -118,8 +112,9 @@ include("src/run_CLOUD18_calibration.jl")
 - Directly calibrated concentration traces (PNG/PDF plots)
 - Exported traces (CSV in CLOUD format)
 
-#### Step 3: Inlet Loss Correction (Future)
+#### Step 3: Inlet Loss Correction
 Apply transmission corrections for sampling line losses.
+##########################################################################################################
 
 ## Configuration
 
@@ -131,6 +126,7 @@ Edit `src/run_CLOUD18_calibration.jl` to configure your calibration:
 dir_CLOUD18 = joinpath(@__DIR__, "..", "..")
 dir_calib_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Calibration")
 dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor")
+#rename licor file to use with licor_restofthename.txt
 
 # Calibration data files
 drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5")
@@ -145,7 +141,7 @@ resultfiles = ["$(resultfp)/results/_result.hdf5"]
 ```julia
 ionization = "NH4+"  # or "H+"
 refMass = massLibrary.HEXANONE_nh4[1]  # Reference compound mass
-refName = "C6H12O"  # Reference compound formula
+refName = "C6H12O"  # Reference compound formula ############################################################################
 ```
 
 ### Export Settings
@@ -189,7 +185,7 @@ calibrate_traces_main(config)
 # 3. When prompted:
 # - Choose 'f' for full primary ion list
 # - Choose 'y' for humidity-dependent calibration
-# - Select outliers to exclude from fit (click on plot)
+# - Select outliers to exclude from fit (click on plot and press 'c')
 # - Choose 'power' or 'linear' fit function
 ```
 
@@ -232,15 +228,15 @@ resultfiles = [
 Normalizes hexanone signal to primary ion intensity using fit functions:
 - **Power function**: `f(x) = a * x^b` (recommended for most cases)
 - **Linear function**: `f(x) = a * x + b`
-- **Exponential**: `f(x) = a * exp(-b*x) + c`
-- **Double exponential**: `f(x) = a₁ * exp(-b₁*x) + a₂ * exp(-b₂*x) + c`
+- **Exponential**: `f(x) = a * exp(-b*x) + c` (not implemented yet)
+- **Double exponential**: `f(x) = a₁ * exp(-b₁*x) + a₂ * exp(-b₂*x) + c` (not implemented yet)
 
 ### Humidity-Dependent Calibration
-For compounds with 1 oxygen atom, applies humidity correction:
+For compounds with 1 oxygen atom and compounds from the gas standard, applies additionally humidity correction:
 ```
 Sensitivity(AH) = f_dry * f_humid(AH)
 ```
-where `f_humid` is a double exponential function of absolute humidity (AH).
+where `f_humid` is a double exponential function of absolute humidity (AH), normalized to the zero humidity point of hexanone.
 
 ### Composition-Based Strategy
 - **Undefined masses**: Dry calibration with hexanone
@@ -251,10 +247,8 @@ where `f_humid` is a double exponential function of absolute humidity (AH).
 
 ### Uncertainty Estimation
 Propagates errors from:
-- Fit parameter uncertainties (standard errors)
-- Primary ion variability
-- Number of calibration points
-- Humidity calibration scatter (future)
+- Fit parameter uncertainties of the reference vs PI fit (standard errors)
+- Humidity calibration scatter (not implemented yet)
 
 ## Troubleshooting
 
@@ -263,11 +257,6 @@ Propagates errors from:
 **Error: "Reference compound not found in calibration data"**
 - Check that `refName` matches a formula in `humcalibfile` (e.g., "C6H12O.NH4+" or "C6H12O")
 - The package uses atomic composition matching, so "C6H12O.NH4+" = "C6H12H+O.NH4+"
-
-**Error: "LoadError: LinearAlgebra.SingularException"**
-- Double exponential fit failed (ill-conditioned)
-- Choose a simpler fit function (power or linear)
-- Exclude more outlier points to improve data quality
 
 **Plot window not responding**
 - Ensure PyPlot is properly configured with matplotlib backend
@@ -288,7 +277,7 @@ Propagates errors from:
 - Zoom and pan before selecting points
 - Press 'c' on keyboard while hovering over outliers
 - Select exactly the number of points requested
-- Close plot window after selection is complete
+- Program continues on automatcally after selecting the number of points requested
 
 ## Dependencies
 
