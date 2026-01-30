@@ -1,6 +1,6 @@
 module CalibrateTraces
 
-export calibrate_traces_main, CalibrationConfig
+export calibrate_traces_main
 
 #using ... from ...
 using HDF5
@@ -22,40 +22,6 @@ import TOFTracer2.ResultFileFunctions
 import TOFTracer2.PlotFunctions
 import TOFTracer2.MasslistFunctions
 import TOFTracer2.massLibrary
-
-### STRUCT ###
-"""
-    CalibrationConfig
-
-Struct to hold configuration parameters for trace calibration.
-
-# Fields
-- `dir_licor_data::String`: Directory path containing Licor data files.
-- `humcalibfile::String`: Path to humidity calibration file (CSV).
-- `drycalibsfile::String`: Path to dry calibration file (HDF5 or CSV).
-- `resultfp::String`: File path to save the results.
-- `resultfiles::Vector{String}`: List of paths to result files (HDF5).
-- `ionization::String`: Ionization method used (e.g., "NH4+").
-- `primaryionslist::Vector{Float64}`: List of primary ion masses to load.
-- `refMass::Float64`: Mass of the reference compound.
-- `refName::String`: Name of the reference compound.
-- `exportTraces::Bool`: Flag to indicate whether to export calibrated traces.
-- `HeaderForExportDict::Dict{String,Any}`: Dictionary containing header information for export.
-"""
-struct CalibrationConfig
-    dir_licor_data::String
-    humcalibfile::String
-    drycalibsfile::String
-    resultfp::String
-    resultfiles::Vector{String}
-    ionization::String
-    primaryionslist::Vector{Float64}
-    refMass::Float64
-    refName::String
-    exportTraces::Bool
-    HeaderForExportDict::Dict{String,Any}
-end
-
 
 ### FUNCTIONS ###
 ### helper functions ###
@@ -207,19 +173,21 @@ end
 
 
 """
-    dryCal_selectPIandRefDataInteractive(drycalibsfile::String)
+    dryCal_selectPIandRefDataInteractive(drycalibsfile::String, refMass, primaryionslist)
 
 Interactively select dry calibration data points to exclude from fit and return fitted hexanone vs primary ion parameters.
 
 # Arguments
 - `drycalibsfile::String`: Path to dry calibration file (hdf5).
+- `refMass`: Reference mass for calibration (e.g., hexanone + NH4+).
+- `primaryionslist`: List of primary ion masses for calibration.
 
 # Returns
 - `hexVSpis_params::Tuple`: Tuple containing fit parameters, errors, and functiontype.
 """
-function dryCal_selectPIandRefDataInteractive(drycalibsfile::String) #modified from CalibrationFunctions.dryCal_selectPIandRefDataFromIFIG
+function dryCal_selectPIandRefDataInteractive(drycalibsfile::String, refMass, primaryionslist) #modified from CalibrationFunctions.dryCal_selectPIandRefDataFromIFIG
 
-    dryCalibFig, dryCalibAx, mResDryCalibs, primaryiontraces, referencetraces = scatterDryCalibs2(drycalibsfile; referenceMasses=[TOFTracer2.massLibrary.HEXANONE_nh4[1]], primaryions=[])
+    dryCalibFig, dryCalibAx, mResDryCalibs, primaryiontraces, referencetraces = scatterDryCalibs2(drycalibsfile; referenceMasses=refMass, primaryionslist)
     # println("please give the minimum y-value to show")
     # dryCalibAx.set_ylim(bottom=parse(Int, readline()))
     println("How many dry calibration data points do you want to exclude from the fit?")
@@ -314,6 +282,21 @@ function calc_fhex(summedPIs, hexVSpis_params)
     return f_hex, f_hex_err
 end
 
+function ask_for_PIList()
+    println("Which primary ions will be used for the calibration? For the full list for NH4+ soft ionization press 'f', for using only NH4+ press 'o'.")
+    userinput1 = readline()
+    while !(userinput1 in ["f", "o"])
+        println("Invalid input. Please enter 'f' for full list or 'o' for NH4+ only.")
+        userinput1 = readline()
+    end
+    if userinput1 == "f"
+        primaryionslist = massLibrary.FullPrimaryionslist_NH4soft #adding all possible water and ammonium clusters: [18.033836, 19.017856000000002, 35.060396, 36.044416, 37.028436, 52.086956, 53.070975999999995, 54.054996, 72.065576]
+    elseif userinput1 == "o"
+        primaryionslist = MasslistFunctions.massFromComposition(H=3, N=1) #H+ is added automatically in massFromComposition
+    end
+
+    return primaryionslist
+end
 
 
 #the rest is modified from calibration script
@@ -325,6 +308,8 @@ Load or create and save hexanone vs. primary ion calibration parameters, using T
 
 # Arguments
 - `drycalibsfile::String`: Path to dry calibration file (HDF5 or CSV)
+- `refMass`: Reference mass for calibration (e.g., hexanone + NH4+).
+- `primaryionslist`: List of primary ion masses for calibration.
 
 # Returns
 - `hexVSpis_params::Tuple`: Tuple containing parameters, errors, and metadata
@@ -332,9 +317,9 @@ Load or create and save hexanone vs. primary ion calibration parameters, using T
 # Saves
 - CSV file with hexanone vs. primary ion calibration parameters if loaded from HDF5, in the same directory as `drycalibsfile`.
 """
-function load_hexVSpis_params(drycalibsfile::String)
+function load_hexVSpis_params(drycalibsfile::String, refMass, primaryionslist)
     if HDF5.ishdf5(drycalibsfile)
-        hexVSpis_params = dryCal_selectPIandRefDataInteractive(drycalibsfile)
+        hexVSpis_params = dryCal_selectPIandRefDataInteractive(drycalibsfile, refMass, primaryionslist)
         hexVSpis_params2export = vcat(hexVSpis_params[3], ["parameters" "errors"], hcat(hexVSpis_params[1], hexVSpis_params[2]))
         CSV.write("$(dirname(drycalibsfile))\\Hexanone_VS_PIs_params.csv", DataFrame(hexVSpis_params2export, :auto)) 
     else
@@ -519,7 +504,7 @@ function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName
         end
     end
 
-    return dcps_per_ppb, dcps_per_ppb_err, indices #indices of gas standard compounds calibrated individually
+    return dcps_per_ppb, indices #indices of gas standard compounds calibrated individually
 end
 #what I changed: remove frostpoint dependency, use only licor instead. use humidity dependant calibration for 1 oxygen and kinetic limit calibration for 2+ oxygen.
 #added error here, but f_hum_err is still zero
@@ -542,7 +527,7 @@ function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName
     dcps_per_ppb[:, (undeffilter .| oneplusoxygenfilter)] .= f_hex
     dcps_per_ppb_err[:, (undeffilter .| oneplusoxygenfilter)] .= dcps_per_ppb[:, (undeffilter .| oneplusoxygenfilter)] .* f_hex_err # no humidity dependent calibration error for dry calibration
 
-    return dcps_per_ppb, dcps_per_ppb_err
+    return dcps_per_ppb
 end
 
 
@@ -710,61 +695,69 @@ end
 ###############################################################################
 
 """
-    calibrate_traces_main(config::CalibrationConfig)
+    calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refName, exportTraces, HeaderForExportDict)
+    calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refName, exportTraces, HeaderForExportDict)
 
-Main function to calibrate measurement traces based on humidity-dependent and dry calibration.
+Main function to calibrate measurement traces. Two methods are available:
+- With humidity-dependent calibration: Applies humidity-dependent calibration for 1-oxygen compounds and individually calibrated gas standard compounds. Requires Licor humidity data and humidity calibration parameters.
+- Dry calibration only: Applies dry calibration to all compounds (except 0-oxygen compounds). Suitable for temperatures >0°C or when humidity data is unavailable.
 
 # Arguments
-- `config::CalibrationConfig`: Struct containing paths and parameters for calibration.
+- `dir_licor_data::String`: (Humidity method only) Directory path containing Licor data files.
+- `humcalibfile::String`: (Humidity method only) File path for humidity-dependent calibration parameters (txt format).
+- `drycalibsfile::String`: File path for dry calibration data (HDF5) or hexanone vs. primary ion parameters (CSV).
+- `resultfp::String`: Directory path for saving calibration results and plots.
+- `resultfiles::Vector{String}`: List of measurement result file paths to be calibrated (HDF5).
+- `ionization::String`: Ionization type used in measurements (e.g., "NH4+", "H+").
+- `refMass`: Reference compound mass for calibration (e.g., hexanone + NH4+).
+- `refName::String`: Reference compound chemical formula (e.g., "C6H12O.NH4+").
+- `exportTraces::Bool`: Flag to export calibrated traces to CLOUD format CSV.
+- `HeaderForExportDict::Dict{String,Any}`: Dictionary containing metadata for exported CSV headers.
+
+# Interactive Prompts
+During execution, the function will prompt for:
+- Primary ion selection (full list or NH4+ only)
+- Number of dry calibration points to exclude
+- Fit function type (linear, power)
 
 # Saves
-- Humidity-dependent calibration plot in the directory of `humcalibfile`.
-- Calibration traces plot as PNG and PDF files.
-- Exported calibrated traces as CSV file.
+- Dry calibration plots: `dryCalibs.png`, `Hexanone_VS_PIs.png/pdf` in dry calibration directory
+- (Humidity-dependent only) Calibration traces plot for gas standard compounds: `CalibrationTraces.png/pdf` in `resultfp`
+- (Humidity-dependent only) Directly calibrated traces for gas standard compounds: `DirectlyCalibratedTraces.png/pdf` in `resultfp`
+- Hexanone vs. PI parameters: `Hexanone_VS_PIs_params.csv` (if processing HDF5 dry calibration file)
+- Exported traces: `CLOUD_PTR_<ionization>_ambient_vXX.txt` in `resultfp` (if `exportTraces=true`)
 """
-function calibrate_traces_main(config::CalibrationConfig)
-
-    hexVSpis_params = load_hexVSpis_params(config.drycalibsfile)
-
-    #primaryionslist = isempty(config.primaryionslist) ? massLibrary.FullPrimaryionslist_NH4soft : config.primaryionslist
-    println("Which primary ions will be used for the calibration? For the full list for NH4+ soft ionization press 'f', for using only NH4+ press 'o'.")
-    userinput1 = readline()
-    while !(userinput1 in ["f", "o"])
-        println("Invalid input. Please enter 'f' for full list or 'o' for NH4+ only.")
-        userinput1 = readline()
-    end
-    if userinput1 == "f"
-        primaryionslist = massLibrary.FullPrimaryionslist_NH4soft #adding all possible water and ammonium clusters: [18.033836, 19.017856000000002, 35.060396, 36.044416, 37.028436, 52.086956, 53.070975999999995, 54.054996, 72.065576]
-
-    elseif userinput1 == "o"
-        primaryionslist = MasslistFunctions.massFromComposition(H=3, N=1) #H+ is added automatically in massFromComposition
-    end
-
-    mResfinal, mResfinal_PIs = load_and_merge_results(config.resultfiles, primaryionslist) #PI: (58, 1) #rest of masses: (58, 1195)
+function calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+    
+    primaryionslist = ask_for_PIList()
+    hexVSpis_params = load_hexVSpis_params(drycalibsfile, refMass, primaryionslist)
+    mResfinal, mResfinal_PIs = load_and_merge_results(resultfiles, primaryionslist) #PI: (58, 1) #rest of masses: (58, 1195)
     summedPIs = compute_summed_primary_ions(mResfinal_PIs)
 
-    println("Do you want to apply the humidity-dependent calibration (recommended for T>0°C)? (y/n)")
-    userinput2 = readline()
-    while !(userinput2 in ["y", "n"])
-        println("Invalid input. Please enter 'y' for yes or 'n' for no.")
-        userinput2 = readline()
-    end
-    if userinput2 == "y"
-        licorDat = load_licor_data(config.dir_licor_data)
-        licor_final = interpolate_licor_to_ptr_time(mResfinal, licorDat)
-        calibDF = CSV.read(config.humcalibfile, DataFrame; delim='\t', header=2) #DataFrame, containing humidity dependent calibration parameters (p1-p5 with errors, double exponential fit) for different compounds including reference compound
-        dcps_per_ppb, dcps_per_ppb_err, indices = build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, config.refName, licor_final, calibDF)
-        
-        plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, config.resultfp, config.ionization) #for directly calibrated masses
-        plot_directly_calibrated_traces(mResfinal, dcps_per_ppb, summedPIs, indices, config.resultfp, config.ionization)
+    licorDat = load_licor_data(dir_licor_data)
+    licor_final = interpolate_licor_to_ptr_time(mResfinal, licorDat)
+    calibDF = CSV.read(humcalibfile, DataFrame; delim='\t', header=2) #DataFrame, containing humidity dependent calibration parameters (p1-p5 with errors, double exponential fit) for different compounds including reference compound
     
-    elseif userinput2 == "n"
-        dcps_per_ppb, dcps_per_ppb_err = build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, config.refName)
-        #indices = Int[]
-    end
+    dcps_per_ppb, indices = build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName, licor_final, calibDF)
+    
+    plot_calibration_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp, ionization) #for directly calibrated masses
+    plot_directly_calibrated_traces(mResfinal, dcps_per_ppb, summedPIs, indices, resultfp, ionization)
 
-    if config.exportTraces
-        export_calibrated_traces(mResfinal, dcps_per_ppb, config.ionization, config.HeaderForExportDict, config.resultfp)
+    if exportTraces
+        export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderForExportDict, resultfp)
+    end
+end
+
+function calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+    hexVSpis_params = load_hexVSpis_params(drycalibsfile, refMass, primaryionslist)
+    primaryionslist = ask_for_PIList()
+    mResfinal, mResfinal_PIs = load_and_merge_results(resultfiles, primaryionslist) #PI: (58, 1) #rest of masses: (58, 1195)
+    summedPIs = compute_summed_primary_ions(mResfinal_PIs)
+
+    dcps_per_ppb = build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName)
+
+    if exportTraces
+        export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderForExportDict, resultfp)
     end
 end
 

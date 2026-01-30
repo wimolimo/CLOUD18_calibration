@@ -4,7 +4,7 @@
 #include("src\\run_CLOUD18_calibration.jl")
 
 include("CLOUD18_calibration.jl")
-using CLOUD18_calibration: CalibrationConfig, calibrate_traces_main
+using CLOUD18_calibration: calibrate_traces_main
 using TOFTracer2
 using TOFTracer2.MasslistFunctions
 using TOFTracer2: massLibrary
@@ -29,9 +29,8 @@ resultfiles = ["$(resultfp)/results/_result.hdf5"] #adjust filename, can add mul
 
 ionization = "NH4+" # "NH4+", "H+"...
 primaryionslist = [] #chosen by user
-
-refMass = massLibrary.HEXANONE_nh4[1] #mass of hexanone + NH4+ from julia package manualMassLibrary.jl
-refName = TOFTracer2.MasslistFunctions.sumFormulaStringFromCompositionArray(massLibrary.HEXANONE_nh4[4]; ion = "")
+refMass = TOFTracer2.massLibrary.HEXANONE_nh4[1] #mass of hexanone + NH4+
+refName = TOFTracer2.MasslistFunctions.sumFormulaStringFromCompositionArray(massLibrary.HEXANONE_nh4[4]; ion = "NH4+")
 
 exportTraces = true # if true, check HeaderForExportDict below:
 HeaderForExportDict = Dict(
@@ -54,7 +53,17 @@ HeaderForExportDict = Dict(
 # run CLOUD18_calibration.HumidityDependence.run_humidity_dependence_calibration to get humcalibfile
 
 # 2. Run calibrate_traces
-config = CLOUD18_calibration.CalibrateTraces.CalibrationConfig(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, primaryionslist, refMass, refName, exportTraces, HeaderForExportDict)
-CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(config)
+
+println("Do you want to apply the humidity-dependent calibration (recommended for T>0°C)? (y/n)")
+userinput2 = readline()
+while !(userinput2 in ["y", "n"])
+        println("Invalid input. Please enter 'y' for yes or 'n' for no.")
+        userinput2 = readline()
+end
+if userinput2 == "y"
+        CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+elseif userinput2 == "n"
+        CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+end
 
 # 3. Run Inlet Loss Correction
