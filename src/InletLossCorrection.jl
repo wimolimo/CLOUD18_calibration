@@ -52,7 +52,7 @@ function run_inlet_loss_correction(fp; timerange::Vector{DateTime} = [DateTime(2
             "title"=>"oxidized hydrocarbons from Nonanal runs at 8°C",
             "level"=>2,
             "version"=>"01",
-            "authorname_mail"=>"Scholz, Wiebke wiebke.scholz@uibk.ac.at; Ruth, Clea clea.ruth@uibk.ac.at; Wittler, Timo, wittler.timo@uibk.ac.at",
+            "authorname_mail"=>"Ruth, Clea clea.ruth@uibk.ac.at; Wittler, Timo, wittler.timo@uibk.ac.at",
             "units"=>"ppt",
             "addcomment"=>"The data have been humidity-depently calibrated with Hexanone as reference (Onr=[1,2]),
             compounds with Onr>2 are calibrated with kinetic limit.

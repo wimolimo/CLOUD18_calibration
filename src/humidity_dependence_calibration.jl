@@ -1,6 +1,6 @@
-#module HumidityDependenceCalibration
+module HumidityDependenceCalibration
 
-#export run_humidity_dependence_calibration, get_ion_metadata, compute_window_averages, print_relative_error_summary, fit_and_export_sensitivities, plot_relative_normalization
+export run_humidity_dependence_calibration, get_ion_metadata, compute_window_averages, print_relative_error_summary, fit_and_export_sensitivities, plot_relative_normalization
 
 using HDF5, PyCall, PyPlot, Dates, CSV, DataFrames, Statistics
 import LsqFit
@@ -9,17 +9,6 @@ import TOFTracer2.InterpolationFunctions as IntpF
 import TOFTracer2.CalibrationFunctions as CalF
 import TOFTracer2.ExportFunctions as ExpF
 import TOFTracer2.ImportFunctions as ImpF
-
-# --- Global Configurations ---
-const fp = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "Humidity-dependent_std", "results")
-const file = joinpath(fp, "_result.hdf5")
-const humidity_file = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Licor", "2025-11-21.txt")
-const bg_file = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "humidity_dependent_BG", "results", "_result.hdf5")
-
-const colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan"]
-
-
-
 
 # --- Helper Functions ---
 
@@ -126,6 +115,8 @@ function DoubleExponential_and_fit(
     yscale::String="linear"
 )
 
+    colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan"]
+
     hums_plot_range = collect(0.0:0.1:maximum(hums)+0.5)
     params_all, params_err_all = [], []
     
@@ -191,6 +182,8 @@ function plot_relative_normalization(
     yscale::String="linear"
 )
 
+    colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan"]
+
     hex_idx = findfirst(isapprox.(mRes.MasslistMasses, massLibrary.HEXANONE_nh4[1], atol=0.0001))
     isnothing(hex_idx) && (println("Hexanone not found, skipping relative plot."); return)      # hexanone must be in the mass list
     
@@ -220,7 +213,7 @@ end
 
 # --- main function --------------------------------------------------
 
-function run_humidity_dependence_calibration(;plotTime::Vector{DateTime, DateTime} = [DateTime(2000, 1, 1), DateTime(3000, 1, 1)])
+function run_humidity_dependence_calibration(fp::String, calibFile_std::String, calibFile_bg::String, humFile::String; plotTime::Vector{DateTime} = [DateTime(2000, 1, 1), DateTime(3000, 1, 1)])
 
     plottime_start = plotTime[1]
     plottime_end = plotTime[2]
@@ -229,8 +222,8 @@ function run_humidity_dependence_calibration(;plotTime::Vector{DateTime, DateTim
     masses_plot, keys_list, ion = get_ion_metadata("NH4+", massLibrary.CLOUD_brownSTD_masses)
 
     # 2. Raw Loading & Plotting
-    (fig, axTraces, measResult) = PlotFunctions.plotTracesFromHDF5(file, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
-    (fig_bg, axTraces_bg, measResult_bg) = PlotFunctions.plotTracesFromHDF5(bg_file, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
+    (fig, axTraces, measResult) = PlotFunctions.plotTracesFromHDF5(calibFile_std, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
+    (fig_bg, axTraces_bg, measResult_bg) = PlotFunctions.plotTracesFromHDF5(calibFile_bg, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
     
     # Plot BG averages line
     bg_m = vec(mean(measResult_bg.Traces, dims=1))
@@ -239,8 +232,8 @@ function run_humidity_dependence_calibration(;plotTime::Vector{DateTime, DateTim
     end
 
     # plot Licordata into raw plot
-    humdat = PlotFunctions.load_plotLicorData(humidity_file; ax=axTraces, header=2)
-    humdat_bg = PlotFunctions.load_plotLicorData(humidity_file; ax=axTraces_bg, header=2)
+    humdat = PlotFunctions.load_plotLicorData(humFile; ax=axTraces, header=2)
+    humdat_bg = PlotFunctions.load_plotLicorData(humFile; ax=axTraces_bg, header=2)
 
     # 3. Time Averaging Logic
     calibData, calibData_std, hums_avg, hums_stds, win = getHumiditySensitivity(measResult, humdat, measResult_bg; signaltimes=[plottime_start, plottime_end])
@@ -266,8 +259,6 @@ function run_humidity_dependence_calibration(;plotTime::Vector{DateTime, DateTim
     println("Humidity dependence calibration completed.")
 end
 
-#end # module HumidityDependenceCalibration
+end # module HumidityDependenceCalibration
 
-#using .HumidityDependenceCalibration
-
-run_humidity_dependence_calibration()
+#run_humidity_dependence_calibration()

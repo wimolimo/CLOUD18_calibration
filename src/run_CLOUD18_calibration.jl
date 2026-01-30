@@ -20,8 +20,12 @@ dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor") #select licor da
 #dry calibration file # this ican be either the processed file of the dry calibrations or the CSV file containing the exported hexanone vs primary ion parameters for loading them:
 drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5") #or "dry_std\\resultsHexanone_VS_PIs_params.csv"
 
-#humidity dependent calibration file, from humidity_dependence_calibration.jl
-humcalibfile = joinpath(dir_calib_data, "Humidity-dependent_std", "results", "fitParameters_relative.txt") #humcalibfp
+#files for humidity dependent calibration and resulting file with fit parameters
+std_fp = joinpath(dir_calib_data, "Humidity-dependent_std", "results") #folder containing humidity dependent calibration data
+std_file = joinpath(std_fp, "_result.hdf5") #file to be used for humidity dependent calibration
+bg_file = joinpath(std_fp, "_result.hdf5") #background file for humidity dependent calibration
+hum_file = joinpath(dir_licor_data, "2025-11-21.txt") #licor file for humidity dependent calibration
+humcalibfile = joinpath(std_fp, "fitParameters_relative.txt") #humcalibfp
 
 #file to be calibrated at once with same mass list
 resultfp = joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #change result filepath to data that is analyzed #results of this script are also saved here
@@ -50,7 +54,15 @@ HeaderForExportDict = Dict(
 #########################
 
 # 1. Run humidity dependence calibration
-# run CLOUD18_calibration.HumidityDependence.run_humidity_dependence_calibration to get humcalibfile
+println("Do you want to (re)run the humidity dependence calibration? (y/n)")
+input_humcalib = readline()
+while !(input_humcalib in ["y", "n"])
+        println("Invalid input. Please enter 'y' for yes or 'n' for no.")
+        input_humcalib = readline()
+end
+if input_humcalib == "y"
+    CLOUD18_calibration.HumidityDependenceCalibration.run_humidity_dependence_calibration(std_fp, std_file, bg_file, hum_file)
+end
 
 # 2. Run calibrate_traces
 let
