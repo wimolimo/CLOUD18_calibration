@@ -48,7 +48,7 @@ measurement point, and performs background subtraction if a background dataset i
 function getHumiditySensitivity(
     mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, 
     humdat::DataFrame, 
-    mRes_bg::Union{TOFTracer2.ResultFileFunctions.MeasurementResult, Vector{Any}}; 
+    mRes_bg::Union{TOFTracer2.ResultFileFunctions.MeasurementResult, Vector{Any}}=[]; 
     ppt::Float64=1000.0, 
     signaltimes::Vector{DateTime}=[DateTime(0), DateTime(3000)]
 )

@@ -55,15 +55,16 @@ HeaderForExportDict = Dict(
 # 2. Run calibrate_traces
 
 println("Do you want to apply the humidity-dependent calibration (recommended for T>0°C)? (y/n)")
-userinput2 = readline()
+userinput = readline()
 while !(userinput2 in ["y", "n"])
         println("Invalid input. Please enter 'y' for yes or 'n' for no.")
-        userinput2 = readline()
+        userinput = readline()
 end
-if userinput2 == "y"
+if userinput == "y"
         CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
-elseif userinput2 == "n"
+elseif userinput == "n"
         CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
 end
 
 # 3. Run Inlet Loss Correction
+CLOUD18_calibration.InletLossCorrection.run_inlet_loss_correction(resultfp; timerange=[DateTime(2000,1,1), DateTime(3000,1,1)], export_fp=resultfp)
