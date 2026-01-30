@@ -5,7 +5,7 @@ DocMeta.setdocmeta!(CLOUD18_calibration, :DocTestSetup, :(using CLOUD18_calibrat
 
 makedocs(;
     modules=[CLOUD18_calibration],
-    authors="Timo Wittler wittler.timo@uibk.ac.at",
+    authors="Timo Wittler wittler.timo@uibk.ac.at, Clea Ruth clea.ruth@uibk.ac.at",
     sitename="CLOUD18_calibration.jl",
     format=Documenter.HTML(;
         canonical="https://wimolimo.github.io/CLOUD18_calibration.jl",

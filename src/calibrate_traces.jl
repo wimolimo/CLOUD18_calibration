@@ -1,3 +1,8 @@
+"""
+    module CalibrateTraces
+
+A module for calibrating traces using dry and humidity-dependent calibration data.
+"""
 module CalibrateTraces
 
 export calibrate_traces_main
