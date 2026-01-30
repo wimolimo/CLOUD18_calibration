@@ -11,14 +11,12 @@ import TOFTracer2.ExportFunctions as ExpF
 import TOFTracer2.ImportFunctions as ImpF
 
 # --- Global Configurations ---
-const FP = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "Humidity-dependent_std", "results")
-const FILE = joinpath(FP, "_result.hdf5")
-const HUMFILE = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Licor", "2025-11-21.txt")
-const BG_FILE = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "humidity_dependent_BG", "results", "_result.hdf5")
+const fp = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "Humidity-dependent_std", "results")
+const file = joinpath(fp, "_result.hdf5")
+const humidity_file = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Licor", "2025-11-21.txt")
+const bg_file = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Calibration", "humidity_dependent_BG", "results", "_result.hdf5")
 
-const PLOT_START = DateTime(2000, 1, 1)
-const PLOT_END = DateTime(3000, 1, 1)
-const COLORS = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan"]
+const colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan"]
 
 
 
@@ -26,12 +24,12 @@ const COLORS = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", 
 # --- Helper Functions ---
 
 """
-    get_ion_metadata(ions_type, std_dict)
+    get_ion_metadata(ions_type::String, std_dict::AbstractDict)
 
 This function extracts the target m/z values and compound labels from a provided standard 
 dictionary, filtering by the selected ionization mode (e.g., "NH4+" or "H+").
 """
-function get_ion_metadata(ions_type, std_dict)
+function get_ion_metadata(ions_type::String, std_dict::AbstractDict)
     masses, keys_list = Float64[], String[]
     idx = (ions_type == "NH4+") ? 2 : 1
     for key in keys(std_dict)
@@ -44,18 +42,25 @@ end
 """
     compute_window_averages(mRes, humdat, mRes_bg; ppt=1000.0, signaltimes=[])
 
-This function handles the time-averaging logic. It interactively prompts the user for 
-an averaging window, calculates humidity and signal statistics (mean/std) for each 
+This function prompts the user for an averaging window, calculates humidity and signal statistics (mean/std) for each 
 measurement point, and performs background subtraction if a background dataset is provided.
 """
-function compute_window_averages(mRes, humdat, mRes_bg; ppt=1000.0, signaltimes=[DateTime(0), DateTime(3000)])
-    print("Enter number of minutes to average humidity after each measurement (default 4): ")
+function getHumiditySensitivity(
+    mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, 
+    humdat::DataFrame, 
+    mRes_bg::Union{TOFTracer2.ResultFileFunctions.MeasurementResult, Vector{Any}}; 
+    ppt::Float64=1000.0, 
+    signaltimes::Vector{DateTime}=[DateTime(0), DateTime(3000)]
+)
+
+    print("Enter number of minutes to average humidity after each measurement (press Enter for 4): ")
+
     input_str = readline()
     window_val = isempty(strip(input_str)) ? 4.0 : parse(Float64, input_str)
 
     mask = (signaltimes[1] .< mRes.Times) .& (mRes.Times .< signaltimes[2])
     sel_times = mRes.Times[mask]
-    traces = mRes.Traces[mask, :] .* transpose(sqrt.(100 ./ mRes.MasslistMasses))
+    traces = mRes.Traces[mask, :] .* transpose(sqrt.(100 ./ mRes.MasslistMasses))   # duty cycle correction
 
     h_avg, h_std = Float64[], Float64[]
     for t in sel_times
@@ -66,31 +71,37 @@ function compute_window_averages(mRes, humdat, mRes_bg; ppt=1000.0, signaltimes=
     end
 
     if mRes_bg == []
-        cal_data, cal_std = traces ./ ppt, zeros(size(traces))
+        calibData, calibData_std = traces ./ ppt, zeros(size(traces))                          # assumption: std compounds all have 1 ppb
     else
-        bg_traces = mRes_bg.Traces .* transpose(sqrt.(100 ./ mRes_bg.MasslistMasses))
-        cal_data = (traces .- mean(bg_traces, dims=1)) ./ ppt
-        cal_std = (ones(size(traces, 1)) * std(bg_traces, dims=1)) ./ ppt
+        bg_traces = mRes_bg.Traces .* transpose(sqrt.(100 ./ mRes_bg.MasslistMasses))   # duty cycle correction
+        calibData = (traces .- mean(bg_traces, dims=1)) ./ ppt                           # assumption: std compounds all have 1 ppb
+        calibData_std = (ones(size(traces, 1)) * std(bg_traces, dims=1)) ./ ppt
     end
 
-    valid = .!(vec(all(isnan.(cal_data), dims=2))) .& .!isnan.(h_avg)
-    return cal_data[valid, :], cal_std[valid, :], h_avg[valid], h_std[valid], window_val
+    valid = .!(vec(all(isnan.(calibData), dims=2))) .& .!isnan.(h_avg)
+    return calibData[valid, :], calibData_std[valid, :], h_avg[valid], h_std[valid], window_val
 end
 
 """
-    print_relative_error_summary(h_avg, h_std, c_data, c_std, mRes)
+    print_relative_error_summary(h_avg::Vector{Float64}, h_std::Vector{Float64}, calibData::Matrix{Float64}, calibData_std::Matrix{Float64}, mRes::TOFTracer2.ResultFileFunctions.MeasurementResult)
 
 This function calculates and prints a summary of the average relative errors (std/mean) 
 for the humidity (X-axis) and the sensitivities of each ion (Y-axis) to the console.
 """
-function print_relative_error_summary(h_avg, h_std, c_data, c_std, mRes)
+function print_relative_error_summary(
+    h_avg::Vector{Float64}, 
+    h_std::Vector{Float64}, 
+    calibData::Matrix{Float64}, 
+    calibData_std::Matrix{Float64}, 
+    mRes::TOFTracer2.ResultFileFunctions.MeasurementResult
+)
     rel_err_x = h_std ./ h_avg
     println("\n--- Maximum Relative Error Summary ---")
     println("X (Humidity): ", round(maximum(filter(!isnan, rel_err_x)) * 100, digits=2), "%")
-    for i in 1:size(c_data, 2)
-        rel_err_y = c_std[:, i] ./ c_data[:, i]
+    for i in 1:size(calibData, 2)
+        rel_err_y = calibData_std[:, i] ./ calibData[:, i]
         avg_rel_y = maximum(filter(!isnan, rel_err_y)) * 100
-        println("Y (m/z $(round(mRes.MasslistMasses[i], digits=3))): ", round(avg_rel_y, digits=2), "%")
+        println("Y (m/z $(round(mRes.MasslistMasses[i], digits=3))): ", round(avg_rel_y, digits=3), "%")
     end
     println("--------------------------------------\n")
 end
@@ -98,27 +109,35 @@ end
 # --- main Plotting & Fitting ---
 
 """
-    fit_and_plot_sensitivities(hums, hums_stds, c_data, c_std, mRes, keys_list, ion, out_fp; yscale="linear")
+    DoubleExponential_and_fit(hums::Vector{Float64}, hums_stds::Vector{Float64}, calibData::Matrix{Float64}, calibData_std::Matrix{Float64}, mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, ion::String, out_fp::String; yscale::String="linear")
 
 This function performs a double-exponential fit for each ion in the mass list. It generates 
 a visualization containing the averaged data points with error bars and the resulting 
 fit curves. The final plot is saved to the specified output directory.
-
-Returns `(fitParamsMatrix, fitErrorsMatrix, humAxisForPlot)`.
 """
-function fit_and_plot_sensitivities(hums, hums_stds, c_data, c_std, mRes, keys_list, ion, out_fp; yscale="linear")
-    h_plot = collect(0.0:0.1:maximum(hums)+0.5)
-    p_all, e_all = [], []
+function DoubleExponential_and_fit(
+    hums::Vector{Float64}, 
+    hums_stds::Vector{Float64}, 
+    calibData::Matrix{Float64}, 
+    calibData_std::Matrix{Float64}, 
+    mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, 
+    ion::String, 
+    out_fp::String; 
+    yscale::String="linear"
+)
+
+    hums_plot_range = collect(0.0:0.1:maximum(hums)+0.5)
+    params_all, params_err_all = [], []
     
     fig, ax = subplots(figsize=(10, 6))
     for i in 1:length(mRes.MasslistMasses)
-        p, err, _ = CalF.fitParameters_DoubleExponential(hums, c_data[:, i])
-        push!(p_all, p); push!(e_all, err)
+        p, err, _ = CalF.fitParameters_DoubleExponential(hums, calibData[:, i])
+        push!(params_all, p); push!(params_err_all, err)
         
-        lbl = i <= length(keys_list) ? "$(round(mRes.MasslistMasses[i], digits=3)) - $(keys_list[i])" : "m/z $(round(mRes.MasslistMasses[i], digits=3))"
         # Plot data points with error bars and fit curves in matching colors
-        ax.errorbar(hums, c_data[:, i], xerr=hums_stds, yerr=c_std[:, i], marker="o", linestyle="None", color=COLORS[mod1(i, 10)], capsize=3)
-        ax.plot(h_plot, CalF.DoubleExponential(h_plot, p), color=COLORS[mod1(i, 10)], label=lbl)
+        ax.errorbar(hums, calibData[:, i], xerr=hums_stds, yerr=calibData_std[:, i], marker="o", linestyle="None", color=colors[mod1(i, 10)], capsize=3)
+        ax.plot(hums_plot_range, CalF.DoubleExponential(hums_plot_range, p), color=colors[mod1(i, 10)], 
+        label="m/z $(round(mRes.MasslistMasses[i],digits=3)) - $(MasslistFunctions.sumFormulaStringFromCompositionArray(mRes.MasslistCompositions[:,i], ion = ion))")
     end
     
     ax.set_xlabel("Absolute Humidity [mmol mol⁻¹]")
@@ -129,44 +148,57 @@ function fit_and_plot_sensitivities(hums, hums_stds, c_data, c_std, mRes, keys_l
     savefig(joinpath(out_fp, "calibration_$(yscale)_$ion.png"))
     
     # Construct matrices for export (5 rows: p1..p5, N columns: masses)
-    p_mat = hvcat(length(p_all), (p_all[a][j] for a in 1:length(p_all), j in 1:5)...)
-    e_mat = hvcat(length(e_all), (e_all[a][j] for a in 1:length(e_all), j in 1:5)...)
+    params_mat = convert(Matrix{Float64}, hvcat(length(params_all), (params_all[a][j] for a in 1:length(params_all), j in 1:5)...))
+    params_err_mat = convert(Matrix{Float64}, hvcat(length(params_err_all), (params_err_all[a][j] for a in 1:length(params_err_all), j in 1:5)...))
     
-    return p_mat, e_mat, h_plot
+    return params_mat, params_err_mat, hums_plot_range
 end
 
 """
-    export_sensitivities(p_mat, e_mat, mRes, out_fp, filename)
+    export_sensitivities(params_mat::Matrix{Float64}, params_err_mat::Matrix{Float64}, mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, filename::String; out_fp::String)
 
-This function handles the file I/O operations for the calibration parameters. It formats 
-the fitting coefficients and their associated uncertainties into a structured text file 
-using the TOFTracer2 export utility.
+This function handles the file I/O operations for the calibration parameters.
 """
-function export_sensitivities(p_mat::Matrix{Float64}, e_mat::Matrix{Float64}, mRes, filename; out_fp = getcwd())
-
+function export_sensitivities(
+    params_mat::Matrix{Float64}, 
+    params_err_mat::Matrix{Float64}, 
+    mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, 
+    filename::String; 
+    out_fp::String = getcwd()
+)
     full_path = joinpath(out_fp, filename)
-    ExpF.exportFitParameters(full_path, p_mat, e_mat, mRes.MasslistMasses, mRes.MasslistCompositions;
+    ExpF.exportFitParameters(full_path, params_mat, params_err_mat, mRes.MasslistMasses, mRes.MasslistCompositions;
         fitfunction="sensitivity(AH) = p1*exp(-p2*AH) + p3*exp(-p4*AH) + p5")
     println("Parameters exported to: $full_path")
 end
 
 """
-    plot_relative_normalization(h_plot, hums, hums_stds, c_data, c_std, p_mat, e_mat, mRes, keys_list, ion, out_fp; yscale="linear")
+    plot_relative_normalization(h_plot::Vector{Float64}, hums::Vector{Float64}, hums_stds::Vector{Float64}, calibData::Matrix{Float64}, calibData_std::Matrix{Float64}, params_mat::Matrix{Float64}, params_err_mat::Matrix{Float64}, mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, ion::String, out_fp::String; yscale::String="linear")
 
-This function normalizes the sensitivities to the maximum value of Hexanone. It 
-performs error propagation for the relative data, generates normalized plots with 
-scatter points and error bars, and exports the relative fit parameters.
+This function normalizes the sensitivities to the maximum value of Hexanone.
 """
-function plot_relative_normalization(h_plot, hums, hums_stds, calibData, calibData_std, p_mat, e_mat, mRes, keys_list, ion, out_fp; yscale="linear")
+function plot_relative_normalization(
+    h_plot::Vector{Float64}, 
+    hums::Vector{Float64}, 
+    hums_stds::Vector{Float64}, 
+    calibData::Matrix{Float64}, 
+    calibData_std::Matrix{Float64}, 
+    params_mat::Matrix{Float64}, 
+    params_err_mat::Matrix{Float64}, 
+    mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, 
+    ion::String, 
+    out_fp::String; 
+    yscale::String="linear"
+)
 
     hex_idx = findfirst(isapprox.(mRes.MasslistMasses, massLibrary.HEXANONE_nh4[1], atol=0.0001))
     isnothing(hex_idx) && (println("Hexanone not found, skipping relative plot."); return)      # hexanone must be in the mass list
     
-    max_hex = maximum(CalF.DoubleExponential(h_plot, vec(p_mat[:, hex_idx])))
-    max_hex_rel_err = e_mat[5, hex_idx] / p_mat[5, hex_idx] # plateau error proxy
+    max_hex = maximum(CalF.DoubleExponential(h_plot, vec(params_mat[:, hex_idx])))
+    max_hex_rel_err = params_err_mat[5, hex_idx] / params_mat[5, hex_idx] # plateau error proxy
 
-    p_rel = p_mat ./ [max_hex, 1, max_hex, 1, max_hex]
-    e_rel = e_mat ./ [max_hex, 1, max_hex, 1, max_hex]
+    p_rel = params_mat ./ [max_hex, 1, max_hex, 1, max_hex]
+    e_rel = params_err_mat ./ [max_hex, 1, max_hex, 1, max_hex]
 
     fig, ax = subplots(figsize=(10, 6))
     for i in 1:length(mRes.MasslistMasses)
@@ -175,57 +207,62 @@ function plot_relative_normalization(h_plot, hums, hums_stds, calibData, calibDa
         # σ_rel = y_rel * sqrt((σy/y)^2 + (σhex/hex)^2)
         y_rel_err = y_rel .* sqrt.((calibData_std[:, i] ./ calibData[:, i]).^2 )
         
-        ax.plot(h_plot, CalF.DoubleExponential(h_plot, p_rel[:, i]), color=COLORS[mod1(i, 10)])
-        ax.errorbar(hums, y_rel, yerr=y_rel_err, xerr=hums_stds, marker="o", linestyle="None", color=COLORS[mod1(i, 10)], capsize=3, label=keys_list[i])
+        ax.plot(h_plot, CalF.DoubleExponential(h_plot, p_rel[:, i]), color=colors[mod1(i, 10)])
+        ax.errorbar(hums, y_rel, yerr=y_rel_err, xerr=hums_stds, marker="o", linestyle="None", color=colors[mod1(i, 10)], capsize=3, 
+        label="m/z $(round(mRes.MasslistMasses[i],digits=3)) - $(MasslistFunctions.sumFormulaStringFromCompositionArray(mRes.MasslistCompositions[:,i], ion = "NH3H+"))")
     end
     ax.set_ylabel("Rel. Sensitivity to Hexanone"); ax.set_xlabel("Absolute Humidity"); ax.set_title("Relative Humidity-dependent Calibration")
     ax.set_yscale(yscale); ax.legend(); ax.grid(true, alpha=0.3)
     savefig(joinpath(out_fp, "calibration_relHexanone_$(yscale)_$ion.png"))
     
-    export_sensitivities(p_rel, e_rel, mRes, out_fp, "fitParameters_relative.txt")
+    export_sensitivities(p_rel, e_rel, mRes, "fitParameters_relative.txt", out_fp=out_fp)
 end
 
-# --- Orchestrator ---
+# --- main function --------------------------------------------------
 
-function run_humidity_dependence_calibration()
+function run_humidity_dependence_calibration(;plotTime::Vector{DateTime, DateTime} = [DateTime(2000, 1, 1), DateTime(3000, 1, 1)])
+
+    plottime_start = plotTime[1]
+    plottime_end = plotTime[2]
 
     # 1. Metadata Selection
-    m_plot, keys_list, ion = get_ion_metadata("NH4+", massLibrary.CLOUD_brownSTD_masses)
-
-    println("Output get_ion_metadata: ", m_plot, keys_list, ion)
+    masses_plot, keys_list, ion = get_ion_metadata("NH4+", massLibrary.CLOUD_brownSTD_masses)
 
     # 2. Raw Loading & Plotting
-    (fig_raw, ax_raw, measResult) = PlotFunctions.plotTracesFromHDF5(FILE, m_plot; plotHighTimeRes=false, timeFrame2plot=(PLOT_START, PLOT_END))
-    (_, ax_bg, measResult_bg) = PlotFunctions.plotTracesFromHDF5(BG_FILE, m_plot; plotHighTimeRes=false, timeFrame2plot=(PLOT_START, PLOT_END))
+    (fig, axTraces, measResult) = PlotFunctions.plotTracesFromHDF5(file, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
+    (fig_bg, axTraces_bg, measResult_bg) = PlotFunctions.plotTracesFromHDF5(bg_file, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
     
     # Plot BG averages line
     bg_m = vec(mean(measResult_bg.Traces, dims=1))
     for i in 1:length(bg_m) 
-        ax_bg.axhline(bg_m[i], color="C$(i-1)", linestyle="--", alpha=0.6) 
+        axTraces_bg.axhline(bg_m[i], color="C$(i-1)", linestyle="--", alpha=0.6) 
     end
 
     # plot Licordata into raw plot
-    humdat = PlotFunctions.load_plotLicorData(HUMFILE; ax=ax_raw, header=2)
-    _ = PlotFunctions.load_plotLicorData(HUMFILE; ax=ax_bg, header=2)
+    humdat = PlotFunctions.load_plotLicorData(humidity_file; ax=axTraces, header=2)
+    humdat_bg = PlotFunctions.load_plotLicorData(humidity_file; ax=axTraces_bg, header=2)
 
     # 3. Time Averaging Logic
-    c_data, c_std, hums_avg, hums_stds, win = compute_window_averages(measResult, humdat, measResult_bg; signaltimes=[PLOT_START, PLOT_END])
-    println("c_data, c_std, hums_avg, hums_stds sizes, win: ", size(c_data), size(c_std), length(hums_avg), length(hums_stds), win)
+    calibData, calibData_std, hums_avg, hums_stds, win = getHumiditySensitivity(measResult, humdat, measResult_bg; signaltimes=[plottime_start, plottime_end])
+    println("calibData, calibData_std, hums_avg, hums_stds sizes, win: ", size(calibData), size(calibData_std), length(hums_avg), length(hums_stds), win)
 
-    # 4. Shade Averaging Windows on Raw Plot
-    for t in measResult.Times[(PLOT_START .< measResult.Times) .& (measResult.Times .< PLOT_END)]
-        ax_raw.axvspan(t, t + Second(round(Int, win * 60)), color="gray", alpha=0.15)
+    # 4. Shade Averaging Windows on data Plot
+    ax_hum = axTraces.figure.get_axes()[2]  # twin axis is the last axis added to the figure
+    for (i, t) in enumerate(measResult.Times[(plottime_start .< measResult.Times) .& (measResult.Times .< plottime_end)])
+        axTraces.axvspan(t, t + Second(round(Int, win * 60)), color="gray", alpha=0.15)
+        ax_hum.axhline(hums_avg[i], color = "black", linestyle="--", alpha=0.5)
     end
     
     # 5. Result Summaries, Fitting & Export
-    print_relative_error_summary(hums_avg, hums_stds, c_data, c_std, measResult)
+    print_relative_error_summary(hums_avg, hums_stds, calibData, calibData_std, measResult)
     
     # Absolute Sensitivities
-    p_exp, e_exp, h_plot = fit_and_plot_sensitivities(hums_avg, hums_stds, c_data, c_std, measResult, keys_list, ion, FP)
-    export_sensitivities(p_exp, e_exp, measResult, FP, "fitParameters.txt")
+    params, params_err, fig_sensitivity = DoubleExponential_and_fit(hums_avg, hums_stds, calibData, calibData_std, measResult, ion, fp, yscale="log")
+    println("Fitted parameters type: ", typeof(params), typeof(params_err))
+    export_sensitivities(params, params_err, measResult, "fitParameters.txt", out_fp=fp)
     
     # Relative Sensitivities
-    plot_relative_normalization(h_plot, hums_avg, hums_stds, c_data, c_std, p_exp, e_exp, measResult, keys_list, ion, FP, yscale="log")
+    plot_relative_normalization(fig_sensitivity, hums_avg, hums_stds, calibData, calibData_std, params, params_err, measResult, ion, fp, yscale="log")
     println("Humidity dependence calibration completed.")
 end
 
@@ -234,4 +271,3 @@ end
 #using .HumidityDependenceCalibration
 
 run_humidity_dependence_calibration()
-
