@@ -7,17 +7,13 @@ module CalibrateTraces
 
 export calibrate_traces_main
 
-#using ... from ...
-using HDF5
+import HDF5: ishdf5
 using CSV
 using DataFrames
 using Dates
-using DelimitedFiles
 using PyPlot
-using PyCall
-import Statistics
+import Statistics: mean, std
 
-#check !
 using TOFTracer2
 import TOFTracer2.CalibrationFunctions as CalF
 import TOFTracer2.ImportFunctions as ImpF
@@ -278,8 +274,8 @@ function calc_fhex(summedPIs, hexVSpis_params)
     f_hex_err[summedPIs .<= 0] .= 0
 
     total_relative_error = f_hex_err # no humidity dependent calibration error included yet, f_hum_err is zero
-    mean_relative_error = Statistics.mean(total_relative_error)
-    std_of_mean_relative_error = Statistics.std(total_relative_error)
+    mean_relative_error = mean(total_relative_error)
+    std_of_mean_relative_error = std(total_relative_error)
     println("The relative standard error of the calibration factor for this method alone is a factor ",
         round(mean_relative_error,digits=3), " ± ",round(std_of_mean_relative_error,digits=3),
         " due to the error of the normalization to the primary ions.") #change print when f_hum_err != 0
@@ -323,7 +319,7 @@ Load or create and save hexanone vs. primary ion calibration parameters, using T
 - CSV file with hexanone vs. primary ion calibration parameters if loaded from HDF5, in the same directory as `drycalibsfile`.
 """
 function load_hexVSpis_params(drycalibsfile::String, refMass, primaryionslist)
-    if HDF5.ishdf5(drycalibsfile)
+    if ishdf5(drycalibsfile)
         hexVSpis_params = dryCal_selectPIandRefDataInteractive(drycalibsfile, refMass, primaryionslist)
         hexVSpis_params2export = vcat(hexVSpis_params[3], ["parameters" "errors"], hcat(hexVSpis_params[1], hexVSpis_params[2]))
         CSV.write("$(dirname(drycalibsfile))\\Hexanone_VS_PIs_params.csv", DataFrame(hexVSpis_params2export, :auto)) 
