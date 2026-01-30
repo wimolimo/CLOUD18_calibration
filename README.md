@@ -11,7 +11,6 @@ A Julia package for calibrating Proton Transfer Reaction Time-of-Flight Mass Spe
 - [Overview](#overview)
 - [Features](#features)
 - [Installation](#installation)
-- [Quick Start](#quick-start)
 - [Calibration Workflow](#calibration-workflow)
 - [Configuration](#configuration)
 - [Usage Examples](#usage-examples)
@@ -40,6 +39,7 @@ The package uses hexanone (C6H12O) as the primary reference compound and support
   - 0 O: No calibration (zero sensitivity)
   - 1 O: Humidity-dependent calibration (equilibrium)
   - ≥2 O: Dry calibration (kinetic limit)
+- **Primary Ion Selection**: Choose between full list (all water & ammonium clusters) or NH4+ only
 - **Interactive Selection of included Data Points**: Manually exclude outliers from calibration fits
 - **Interactive Selection of Fit Functions**: Choose between Power or linear fit (soon exponential and double exponential)
 - **Uncertainty Propagation**: Error estimates for calibration factors
@@ -85,32 +85,38 @@ Generate humidity-dependent parameters from controlled standard gas measurements
 # Run first to create humcalibfile
 include("src/humidity_dependence_calibration.jl")
 ```
+Only has to be done once.
 
 **Output**: `fitParameters_relative.txt` with double exponential fit parameters (p1-p5) for each compound
 
 #### Step 2: Trace Calibration (Main Step)
-Calibrate all measurement data using dry and humidity-dependent parameters:
+Calibrate all measurement data using dry and potentially humidity-dependent parameters:
 
 ```julia
 include("src/run_CLOUD18_calibration.jl")
 ```
 
-The script will guide you through:
-- Selecting primary ions (full list or NH4+ only)
-- Choosing humidity-dependent vs. dry calibration
-- Selecting calibration data points interactively
-- Choosing fit function type for reference vs PI signal (linear, power)
+The script will interactively guide you through the workflow:
+- Ask whether to use humidity-dependent or dry-only calibration
+- Ask for primary ion selection (full list or NH4+ only)
+- Load hexanone vs. primary ion calibration parameters from dry calibration
+2. 
+4. Load measurement data and calibration parameters
+5. Build calibration traces with composition-based strategy
+6. Generate plots and export calibrated traces (if enabled)
 
 **Inputs**:
-- Dry calibration data (HDF5 or CSV)
-- Humidity calibration parameters (from Step 1)
+- Dry calibration data (HDF5 or CSV with hexanone vs. PI parameters)
+- Humidity calibration parameters (from Step 1, if using humidity-dependent)
 - Measurement result files (HDF5)
-- Licor humidity data (TXT files)
+- Licor humidity data (TXT files, if using humidity-dependent)
 
 **Outputs**:
+- Interactive plots for selecting outliers and choosing fit functions
+- Dry calibration plots: `dryCalibs.png`, `Hexanone_VS_PIs.png/pdf`
 - Calibration factor traces (PNG/PDF plots)
 - Directly calibrated concentration traces (PNG/PDF plots)
-- Exported traces (CSV in CLOUD format)
+- Exported traces (CSV in CLOUD format, if enabled)
 
 #### Step 3: Inlet Loss Correction
 Apply transmission corrections for sampling line losses.
@@ -141,7 +147,7 @@ resultfiles = ["$(resultfp)/results/_result.hdf5"]
 ```julia
 ionization = "NH4+"  # or "H+"
 refMass = massLibrary.HEXANONE_nh4[1]  # Reference compound mass
-refName = "C6H12O"  # Reference compound formula ############################################################################
+refName = "C6H12O.NH4+"  # Reference compound formula ############################################################################
 ```
 
 ### Export Settings
@@ -156,54 +162,57 @@ HeaderForExportDict = Dict(
     "units" => "ppt",
     "addcomment" => "Humidity-dependent calibration with hexanone reference...",
     "threshold" => 0,
-    "nrrows_addcomment" => 4
+    "nrrows_addcomment" => 1
 )
 ```
 
 ## Usage Examples
 
 ### Example 1: Full Humidity-Dependent Calibration
-```julia
 # 1. Set up configuration
-config = CalibrationConfig(
-    dir_licor_data, 
-    humcalibfile, 
-    drycalibsfile, 
-    resultfp, 
-    resultfiles, 
-    "NH4+",
-    [],  # Primary ions selected interactively
-    refMass, 
-    refName, 
-    true,  # Export traces
+
+```julia
+    dir_licor_data
+    humcalibfile
+    drycalibsfile
+    resultfp
+    resultfiles
+    ionization = "NH4+"
+    refMass
+    refName
+    true # Export traces
     HeaderForExportDict
-)
+```
 
 # 2. Run calibration
-calibrate_traces_main(config)
+```julia
+include("src\\run_CLOUD18_calibration.jl")
+```
 
 # 3. When prompted:
-# - Choose 'f' for full primary ion list
 # - Choose 'y' for humidity-dependent calibration
+# - Choose 'f' for full primary ion list
 # - Select outliers to exclude from fit (click on plot and press 'c')
 # - Choose 'power' or 'linear' fit function
-```
+
 
 ### Example 2: Dry Calibration Only
-```julia
-# Same as above, but when prompted:
-# - Choose 'n' for dry calibration only (no humidity dependence)
-```
+Same as above, but dir_licor_data and humcalibfile not needed. When prompted, choose 'n' for dry calibration only.
+
+**Note**: Both methods will still prompt interactively for primary ion selection and fit function choice.
 
 ### Example 3: Multiple Result Files
+To calibrate multiple measurements with the same mass list:
+
 ```julia
-# Calibrate multiple measurements with same mass list
 resultfiles = [
     "$(resultfp)/part1/results/_result.hdf5",
     "$(resultfp)/part2/results/_result.hdf5",
     "$(resultfp)/part3/results/_result.hdf5"
 ]
 ```
+
+The files will be automatically merged and calibrated together.
 
 ## Output Files
 
@@ -236,7 +245,10 @@ For compounds with 1 oxygen atom and compounds from the gas standard, applies ad
 ```
 Sensitivity(AH) = f_dry * f_humid(AH)
 ```
-where `f_humid` is a double exponential function of absolute humidity (AH), normalized to the zero humidity point of hexanone.
+where:
+- `f_dry` is the hexanone vs. primary ion function (power or linear)
+- `f_humid` is a double exponential function of absolute humidity (AH)
+- Normalized so that `f_humid(0) = 1` at dry conditions
 
 ### Composition-Based Strategy
 - **Undefined masses**: Dry calibration with hexanone
@@ -277,7 +289,8 @@ Propagates errors from:
 - Click in figure window before selecting points
 - Press 'c' on keyboard while hovering over primary ion outliers
 - Select exactly the number of points requested
-- Program continues on automatcally after selecting the number of points requested
+- Program continues automatically after selecting the correct number of points
+- If you make a mistake, close the plot and restart
 
 ## Dependencies
 
@@ -291,12 +304,12 @@ Propagates errors from:
 
 ### External
 - Python ≥ 3.7 with matplotlib
-- Licor data acquisition system (optional, for humidity-dependent calibration)
 
 ## Authors
 
-- **Timo Wittler** - wittler.timo@uibk.ac.at
-- **Clea Ruth** - clea.ruth@student.uibk.ac.at
+- **Timo Wittler** - wittler.timo@uibk.ac.at (humidity_dependence_calibration.jl, InletLossCorrection.jl)
+- **Clea Ruth** - clea.ruth@uibk.ac.at (calibrate_traces.jl, run_CLOUD18_calibration.jl)
+- forked from **Wiebke Scholz** - wiebke.scholz@uibk.ac.at (Original calibration concept)
 
 Institute of Ion Physics and Applied Physics  
 University of Innsbruck, Austria
@@ -305,13 +318,12 @@ University of Innsbruck, Austria
 
 See [LICENSE](LICENSE) file for details.
 
+
 ## Citation
 
-If you use this package in your research, please cite:
-```
-Wittler, T., Ruth, C. (2026). CLOUD18_calibration: Calibration tools for PTR-ToF-MS 
-data from the CLOUD18 campaign. https://github.com/wimolimo/CLOUD18_calibration.jl
-```
+If you use this package, please give credits: https://github.com/wimolimo/CLOUD18_calibration.jl
+
+
 
 ## Related Projects
 
