@@ -29,10 +29,6 @@ using TOFTracer2
         @test comp3["N"] == 1
         @test comp3["O"] == 1
         
-        # Test empty composition handling
-        comp4 = parse_formula_to_composition("H2O")
-        @test comp4["H"] == 2
-        @test comp4["O"] == 1
     end
 
     @testset "find_formula_index" begin

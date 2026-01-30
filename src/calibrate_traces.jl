@@ -125,7 +125,7 @@ Plot dry calibration data for primary ions and reference masses from the specifi
 - `primaryiontraces`: Traces of primary ions.
 - `referencetraces`: Traces of reference masses.
 """
-function scatterDryCalibs2(drycalibsfile::String; referenceMasses=[TOFTracer2.massLibrary.HEXANONE_nh4[1]],primaryions=[]) #modified from PlotFunctions.scatterDryCalibs
+function scatterDryCalibs2(drycalibsfile::String; referenceMasses=refMass ,primaryions=primaryionslist) #modified from PlotFunctions.scatterDryCalibs
     if isempty(primaryions)
         primaryions = [
             MasslistFunctions.massFromComposition(H=2, O=1)

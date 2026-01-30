@@ -56,7 +56,7 @@ HeaderForExportDict = Dict(
 
 println("Do you want to apply the humidity-dependent calibration (recommended for T>0°C)? (y/n)")
 userinput = readline()
-while !(userinput2 in ["y", "n"])
+while !(userinput in ["y", "n"])
         println("Invalid input. Please enter 'y' for yes or 'n' for no.")
         userinput = readline()
 end
