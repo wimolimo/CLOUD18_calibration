@@ -19,7 +19,8 @@ dir_calib_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Calibration")
 dir_licor_data = joinpath(dir_CLOUD18, "CLOUD18_data", "Licor") #select licor data where times match the measurement to be calibrated: rename file to use with licor_restofthename.txt
 
 #dry calibration file # this ican be either the processed file of the dry calibrations or the CSV file containing the exported hexanone vs primary ion parameters for loading them:
-drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5") #or "dry_std\\results\\Hexanone_VS_PIs_params.csv"
+drycalibsfile = joinpath(dir_calib_data, "dry_std", "results", "_result.hdf5") 
+#or #drycalibsfile = joinpath(dir_calib_data, "dry_std\\results\\Hexanone_VS_PIs_params.csv")
 
 #files for humidity dependent calibration and resulting file with fit parameters
 std_fp = joinpath(dir_calib_data, "Humidity-dependent_std", "results") #folder containing humidity dependent calibration data

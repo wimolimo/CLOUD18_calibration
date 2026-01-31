@@ -168,7 +168,7 @@ function scatterDryCalibs2(drycalibsfile::String; referenceMasses=refMass ,prima
     yscale("log")
     grid()
     tight_layout()
-    savefig("$(dirname(drycalibsfile))dryCalibs.png")
+    savefig("$(dirname(drycalibsfile))\\dryCalibs.png")
     return dryCalibFig, dryCalibAx, mResDryCalibs, primaryiontraces, referencetraces
 end
 
@@ -244,8 +244,8 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String, refMass, pr
     plot(xforfit, fit_func(xforfit, hexVSpis_params[1]), label=hexVSpis_params[3])
     legend()
     #yscale("log")
-    savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.png")
-    savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.pdf")
+    savefig("$(dirname(drycalibsfile))\\Hexanone_VS_PIs.png")
+    savefig("$(dirname(drycalibsfile))\\Hexanone_VS_PIs.pdf")
     return hexVSpis_params
 end
 
