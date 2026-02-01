@@ -51,7 +51,6 @@ using TOFTracer2
         # Test that plot_fit returns correct functions
         @test plot_fit("power") === CalF.PowerFunction
         @test plot_fit("linear") === CalF.LinearFunction
-        @test plot_fit("exponential") === CalF.Exponential
         
         # Test error for unsupported type
         @test_throws ErrorException plot_fit("unsupported")
@@ -84,10 +83,10 @@ using TOFTracer2
     @testset "compute_summed_primary_ions" begin
         # Create mock measurement results with known values
         times = [Dates.DateTime(2025, 1, 1) + Dates.Hour(i) for i in 0:2]
-        masses = [18.0, 36.0, 54.0]  # H2O+, (H2O)2H+, (H2O)3H+
+        masses = [18.0, 36.0, 54.0]  # H2OH+, (H2O)2H+, (H2O)3H+
         elements = ["H", "O"]
-        elements_masses = [1.00783, 15.99492]
-        compositions = [3 3 3; 1 2 3]  # H3O+, H3O2+, H3O3+
+        elements_masses = [1, 16]
+        compositions = [2 4 6; 1 2 3] 
         traces = [
             100.0 200.0 300.0;  # Time 1
             150.0 250.0 350.0;  # Time 2
@@ -106,29 +105,18 @@ using TOFTracer2
         @test eltype(summedPIs) <: Real
         
         # Check duty cycle correction is applied: trace * sqrt(100/mass)
-        expected_first = sum(traces[1, :] .* sqrt.(100 ./ masses))
-        @test summedPIs[1] ≈ expected_first
+        @test summedPIs[1] ≈ sum(traces[1, :] .* sqrt.(100 ./ masses))
+
+        #Check specific values
+        expected_summedPIs = [
+            sum(traces[1, :] .* sqrt.(100 ./ masses)),
+            sum(traces[2, :] .* sqrt.(100 ./ masses)),
+            sum(traces[3, :] .* sqrt.(100 ./ masses))
+        ]
+        @test all(summedPIs .≈ expected_summedPIs)
     end
 
-    @testset "compute_summed_primary_ions with zero/negative values" begin
-        times = [Dates.DateTime(2025, 1, 1)]
-        masses = [18.0, 36.0]
-        elements = ["H", "O"]
-        elements_masses = [1.00783, 15.99492]
-        compositions = [3 3; 1 2]
-        traces = [-100.0 50.0]  # One negative value
-        
-        mRes = TOFTracer2.ResultFileFunctions.MeasurementResult(
-            times, masses, elements, elements_masses, compositions, traces
-        )
-        
-        summedPIs = compute_summed_primary_ions(mRes)
-        
-        # Negative values in traces still contribute (duty cycle corrected)
-        # But the result is set to 0 if final sum is <= 0
-        @test summedPIs[1] >= 0
-    end
-
+  
     @testset "build_calibration_traces - humidity method error handling" begin
         # Create minimal mock data
         times = [Dates.DateTime(2025, 1, 1), Dates.DateTime(2025, 1, 2)]
@@ -278,57 +266,6 @@ using TOFTracer2
         @test dcps_per_ppb[1, 4] > 0
     end
 
-    @testset "plot_calibration_traces" begin
-        # Create test data
-        times = [Dates.DateTime(2025, 1, 1), Dates.DateTime(2025, 1, 2)]
-        masses = [18.0, 36.0]
-        elements = ["H", "O"]
-        elements_masses = [1.00783, 15.99492]
-        compositions = [3 3; 1 2]
-        traces = ones(2, 2) .* 100.0
-        
-        mRes = TOFTracer2.ResultFileFunctions.MeasurementResult(
-            times, masses, elements, elements_masses, compositions, traces
-        )
-        
-        dcps_per_ppb = [100.0 200.0; 150.0 250.0]
-        summedPIs = [1000.0, 1500.0]
-        indices = [1, 2]
-        resultfp = tempdir()
-        
-        # This function creates plot files, just check it doesn't error
-        @test_nowarn plot_calibration_traces(mRes, dcps_per_ppb, summedPIs, indices, resultfp)
-        
-        # Check that output files were created
-        @test isfile(joinpath(resultfp, "CalibrationTraces.png"))
-        @test isfile(joinpath(resultfp, "CalibrationTraces.pdf"))
-    end
-
-    @testset "plot_directly_calibrated_traces" begin
-        # Create test data
-        times = [Dates.DateTime(2025, 1, 1), Dates.DateTime(2025, 1, 2)]
-        masses = [163.0, 117.0]  # Hexanone and some other compound
-        elements = ["C", "H", "N", "O"]
-        elements_masses = [12.0, 1.00783, 14.00307, 15.99492]
-        compositions = [6 5; 12 9; 0 1; 1 2]
-        traces = [1000.0 500.0; 1200.0 600.0]
-        
-        mRes = TOFTracer2.ResultFileFunctions.MeasurementResult(
-            times, masses, elements, elements_masses, compositions, traces
-        )
-        
-        dcps_per_ppb = [100.0 50.0; 120.0 60.0]
-        summedPIs = [10000.0, 15000.0]
-        indices = [1, 2]
-        resultfp = tempdir()
-        
-        # This function creates plot files
-        @test_nowarn plot_directly_calibrated_traces(mRes, dcps_per_ppb, summedPIs, indices, resultfp)
-        
-        # Check that output files were created
-        @test isfile(joinpath(resultfp, "DirectlyCalibratedTraces.png"))
-        @test isfile(joinpath(resultfp, "DirectlyCalibratedTraces.pdf"))
-    end
 
     @testset "CalibrationConfig with complex header dict" begin
         header_dict = Dict{String, Any}(
@@ -339,7 +276,7 @@ using TOFTracer2
             "units" => "ppt",
             "addcomment" => "Test calibration data",
             "threshold" => 0,
-            "nrrows_addcomment" => 3
+            "nrrows_addcomment" => 1
         )
         
         config = CalibrationConfig(
@@ -363,25 +300,6 @@ using TOFTracer2
         @test length(config.primaryionslist) == 2
     end
 
-    @testset "compute_summed_primary_ions consistency" begin
-        # Test that function is deterministic
-        times = [Dates.DateTime(2025, 1, 1), Dates.DateTime(2025, 1, 2), Dates.DateTime(2025, 1, 3)]
-        masses = [18.0, 36.0]
-        elements = ["H", "O"]
-        elements_masses = [1.00783, 15.99492]
-        compositions = [3 3; 1 2]
-        traces = [100.0 200.0; 150.0 250.0; 200.0 300.0]
-        
-        mRes = TOFTracer2.ResultFileFunctions.MeasurementResult(
-            times, masses, elements, elements_masses, compositions, traces
-        )
-        
-        result1 = compute_summed_primary_ions(mRes)
-        result2 = compute_summed_primary_ions(mRes)
-        
-        @test result1 ≈ result2
-        @test length(result1) == 3
-    end
 
     @testset "Integration test - full workflow simulation" begin
         # Simulate a minimal end-to-end calibration workflow

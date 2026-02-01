@@ -85,15 +85,15 @@ include("src/run_CLOUD18_calibration.jl")
 #### Step 1: Humidity Dependence Calibration (Optional)
 Generate humidity-dependent parameters from controlled standard gas measurements at varying absolute humidity:
 
-The script will ask you, whether you want to do the humidity dependence calibration, since it is only
+The script will ask you whether you want to do the humidity dependence calibration, since it is only
 necessary to do once. If you want to do it, the script will ask for the amount of minutes you want to average
 the humidity for each humidity step. The default is 4 min, which you can use by just pressing Enter.
 
 The output will then give you four figures with (1) the calibration Traces and their humidities (also the
 time averages are shaded), (2) the calibration Traces of the background measurement, (3) the Double Exponential
 Fit of the Humidity Dependence of the Sensitivity and (4) the Double Exponential Fit of the Humidity Dependence
-of the Sensitivity relative to Hexanone. (3) and (4) are being saved as a png file, while the fit parameters relative
-and not relative to Hexanone get written into a txt file.
+of the Sensitivity relative to Hexanone. (3) and (4) are being saved as a png file, while the absolute fit parameters and the fit parameters relative
+ to Hexanone get written into a txt file.
 
 **Output**: 
 - `fitParameters.txt` with double exponential fit parameters (p1-p5) for each compound
@@ -102,16 +102,14 @@ and not relative to Hexanone get written into a txt file.
 #### Step 2: Trace Calibration (Main Step)
 Calibrate all measurement data using dry and potentially humidity-dependent parameters:
 
-
-
 The script will interactively guide you through the workflow:
 - Ask whether to use humidity-dependent or dry-only calibration
 - Ask for primary ion selection (full list or NH4+ only)
-- Load hexanone vs. primary ion calibration parameters from dry calibration
-2. 
-4. Load measurement data and calibration parameters
-5. Build calibration traces with composition-based strategy
-6. Generate plots and export calibrated traces (if enabled)
+- Load hexanone vs. primary ion calibration parameters from dry calibration: user can select datapoints to exclude from the fit in an interactive plot
+- Ask what function to use to fit the reference ion - primary ion dependency
+- Depending on the ion composition, the calibration factors are calculated
+- If humidity-dependent calibration was chosen, the calibration factor and the calibrated traces are plotted
+- Export calibrated traces (if enabled)
 
 **Inputs**:
 - Dry calibration data (HDF5 or CSV with hexanone vs. PI parameters)
@@ -122,8 +120,8 @@ The script will interactively guide you through the workflow:
 **Outputs**:
 - Interactive plots for selecting outliers and choosing fit functions
 - Dry calibration plots: `dryCalibs.png`, `Hexanone_VS_PIs.png/pdf`
-- Calibration factor traces (PNG/PDF plots)
-- Directly calibrated concentration traces (PNG/PDF plots)
+- Calibration factor traces for gas standard compounds: `CalibrationTraces.png/pdf` (if using humidity-dependent)
+- Directly calibrated concentration traces for gas standard compounds: `DirectlyCalibratedTraces.png/pdf` (if using humidity-dependent)
 - Exported traces (CSV in CLOUD format, if enabled)
 
 #### Step 3: Inlet Loss Correction

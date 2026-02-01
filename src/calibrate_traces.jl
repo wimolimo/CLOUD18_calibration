@@ -168,7 +168,7 @@ function scatterDryCalibs2(drycalibsfile::String; referenceMasses=refMass ,prima
     yscale("log")
     grid()
     tight_layout()
-    savefig("$(dirname(drycalibsfile))dryCalibs.png")
+    savefig("$(dirname(drycalibsfile))\\dryCalibs.png")
     return dryCalibFig, dryCalibAx, mResDryCalibs, primaryiontraces, referencetraces
 end
 
@@ -244,8 +244,8 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String, refMass, pr
     plot(xforfit, fit_func(xforfit, hexVSpis_params[1]), label=hexVSpis_params[3])
     legend()
     #yscale("log")
-    savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.png")
-    savefig("$(dirname(drycalibsfile))Hexanone_VS_PIs.pdf")
+    savefig("$(dirname(drycalibsfile))\\Hexanone_VS_PIs.png")
+    savefig("$(dirname(drycalibsfile))\\Hexanone_VS_PIs.pdf")
     return hexVSpis_params
 end
 
@@ -378,14 +378,10 @@ Returns the summed primary ions from the measurement results.
 - `summedPIs::Vector`: Summed primary ion intensities in dcps.
 """
 function compute_summed_primary_ions(mResfinal_PIs)
-#    summedPIs = mResfinal_PIs.Traces .* sqrt.(100 ./ mResfinal_PIs.MasslistMasses)
-    # Traces is matrix (time × masses), MasslistMasses is vector (masses,)
-    # Multiply each column by sqrt(100/mass), then sum across masses to get one value per time point
-    summedPIs = vec(sum(mResfinal_PIs.Traces .* reshape(sqrt.(100 ./ mResfinal_PIs.MasslistMasses), 1, :); dims=2))
+    summedPIs = vec(sum(mResfinal_PIs.Traces .* reshape(sqrt.(100 ./ mResfinal_PIs.MasslistMasses), 1, :); dims=2)) # Multiply each column by sqrt(100/mass) for duty-cycle correction, then sum across masses to get one value per time point
     summedPIs[summedPIs .<= 0] .= 0
     return summedPIs #in dcps
 end
-
 
 ################# humidity dependent calibration functions ####################
 """
