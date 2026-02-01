@@ -34,8 +34,8 @@ resultfp = joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #chang
 resultfiles = ["$(resultfp)/results/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
 
 #file to be calibrated at once with same mass list
-resultfp = std_fp #joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #change result filepath to data that is analyzed #results of this script are also saved here
-resultfiles = ["$(resultfp)/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
+#resultfp = std_fp #joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #change result filepath to data that is analyzed #results of this script are also saved here
+#resultfiles = ["$(resultfp)/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
 
 ionization = "NH4+" # "NH4+", "H+"...
 primaryionslist = [] #chosen by user
