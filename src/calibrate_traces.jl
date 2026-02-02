@@ -301,8 +301,8 @@ function ask_for_PIList()
 end
 
 
-#the rest is modified from calibration script
-### calibration steps functions ###
+#the rest is modified from calibration script from Wiebke
+#################### calibration steps functions #############################
 """
     load_hexVSpis_params(drycalibsfile::String)
 
@@ -331,7 +331,6 @@ function load_hexVSpis_params(drycalibsfile::String, refMass, primaryionslist)
     end
     return hexVSpis_params
 end
-# change to load from CSV if exists?
 
 
 """
