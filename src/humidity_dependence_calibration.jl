@@ -15,8 +15,15 @@ import TOFTracer2.ImportFunctions as ImpF
 """
     get_ion_metadata(ions_type::String, std_dict::AbstractDict)
 
-This function extracts the target m/z values and compound labels from a provided standard 
-dictionary, filtering by the selected ionization mode (e.g., "NH4+" or "H+").
+Extracts target m/z values and compound labels from a standard dictionary based on the ionization mode.
+
+# Arguments
+- `ions_type`: The ionization mode, typically "NH4+" or "H+".
+- `std_dict`: A dictionary (e.g., from `massLibrary`) containing compound names as keys and 
+  m/z values as the first element of the value tuple.
+
+# Returns
+- A tuple containing: `(Vector{Float64} masses, Vector{String} labels, String ion)`.
 """
 function get_ion_metadata(ions_type::String, std_dict::AbstractDict)
     masses, keys_list = Float64[], String[]
@@ -29,12 +36,25 @@ function get_ion_metadata(ions_type::String, std_dict::AbstractDict)
 end
 
 """
-    compute_window_averages(mRes, humdat, mRes_bg; ppt=1000.0, signaltimes=[])
+    get_calibData(mRes, humdat, mRes_bg; ppt=1000.0, signaltimes=[])
 
-This function prompts the user for an averaging window, calculates humidity and signal statistics (mean/std) for each 
-measurement point, and performs background subtraction if a background dataset is provided.
+Averages humidity and signal data for each measurement point and calculates sensitivities.
+
+This function interactively prompts the user for an averaging window (in minutes) to be 
+applied after each measurement timestamp. It performs duty cycle correction on the TOF 
+signals and subtracts background levels if `mRes_bg` is provided.
+
+# Arguments
+- `mRes`: Measurement result object for the calibration standards.
+- `humdat`: DataFrame containing humidity data from a Licor sensor.
+- `mRes_bg`: (Optional) Measurement result object for the background periods.
+- `ppt`: The mixing ratio concentration of the standards in ppt (default 1000.0).
+- `signaltimes`: A vector of `[start, end]` DateTime to filter the measurement periods.
+
+# Returns
+- A tuple: `(calibData, calibData_std, hums_avg, hums_std, window_minutes)`.
 """
-function getHumiditySensitivity(
+function get_calibData(
     mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, 
     humdat::DataFrame, 
     mRes_bg::Union{TOFTracer2.ResultFileFunctions.MeasurementResult, Vector{Any}}=[]; 
@@ -60,10 +80,10 @@ function getHumiditySensitivity(
     end
 
     if mRes_bg == []
-        calibData, calibData_std = traces ./ ppt, zeros(size(traces))                          # assumption: std compounds all have 1 ppb
+        calibData, calibData_std = traces ./ ppt, zeros(size(traces))                           # assumption: std compounds all have 1 ppb
     else
-        bg_traces = mRes_bg.Traces .* transpose(sqrt.(100 ./ mRes_bg.MasslistMasses))   # duty cycle correction
-        calibData = (traces .- mean(bg_traces, dims=1)) ./ ppt                           # assumption: std compounds all have 1 ppb
+        bg_traces = mRes_bg.Traces .* transpose(sqrt.(100 ./ mRes_bg.MasslistMasses))           # duty cycle correction
+        calibData = (traces .- mean(bg_traces, dims=1)) ./ ppt                                  # assumption: std compounds all have 1 ppb
         calibData_std = (ones(size(traces, 1)) * std(bg_traces, dims=1)) ./ ppt
     end
 
@@ -72,10 +92,10 @@ function getHumiditySensitivity(
 end
 
 """
-    print_relative_error_summary(h_avg::Vector{Float64}, h_std::Vector{Float64}, calibData::Matrix{Float64}, calibData_std::Matrix{Float64}, mRes::TOFTracer2.ResultFileFunctions.MeasurementResult)
+    print_relative_error_summary(h_avg, h_std, calibData, calibData_std, mRes)
 
-This function calculates and prints a summary of the average relative errors (std/mean) 
-for the humidity (X-axis) and the sensitivities of each ion (Y-axis) to the console.
+Calculates and prints the maximum relative errors (standard deviation / mean) for both 
+humidity (X-axis) and sensitivity (Y-axis) for each ion to the terminal.
 """
 function print_relative_error_summary(
     h_avg::Vector{Float64}, 
@@ -98,11 +118,21 @@ end
 # --- main Plotting & Fitting ---
 
 """
-    DoubleExponential_and_fit(hums::Vector{Float64}, hums_stds::Vector{Float64}, calibData::Matrix{Float64}, calibData_std::Matrix{Float64}, mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, ion::String, out_fp::String; yscale::String="linear")
+    DoubleExponential_and_fit(hums, hums_stds, calibData, calibData_std, mRes, ion, out_fp; yscale="linear")
 
-This function performs a double-exponential fit for each ion in the mass list. It generates 
-a visualization containing the averaged data points with error bars and the resulting 
-fit curves. The final plot is saved to the specified output directory.
+Fits a double exponential curve to sensitivity data and generates a visualization.
+
+The fit uses the function: `sensitivity(AH) = p1*exp(-p2*AH) + p3*exp(-p4*AH) + p5`.
+
+# Arguments
+- `hums`: Averaged humidity values (mmol/mol or corresponding units).
+- `calibData`: Calculated sensitivities (dcps/ppt).
+- `mRes`: Metadata object containing mass information for labeling.
+- `out_fp`: Directory path where the resulting plot will be saved.
+- `yscale`: Scaling for the plot y-axis (e.g., "linear", "log").
+
+# Returns
+- A tuple: `(params_matrix, errors_matrix, hum_plot_range)`.
 """
 function DoubleExponential_and_fit(
     hums::Vector{Float64}, 
@@ -146,9 +176,9 @@ function DoubleExponential_and_fit(
 end
 
 """
-    export_sensitivities(params_mat::Matrix{Float64}, params_err_mat::Matrix{Float64}, mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, filename::String; out_fp::String)
+    export_sensitivities(params_mat, params_err_mat, mRes, filename; out_fp=getcwd())
 
-This function handles the file I/O operations for the calibration parameters.
+Exports the calculated fit parameters and their associated uncertainties to a formatted text file.
 """
 function export_sensitivities(
     params_mat::Matrix{Float64}, 
@@ -164,9 +194,13 @@ function export_sensitivities(
 end
 
 """
-    plot_relative_normalization(h_plot::Vector{Float64}, hums::Vector{Float64}, hums_stds::Vector{Float64}, calibData::Matrix{Float64}, calibData_std::Matrix{Float64}, params_mat::Matrix{Float64}, params_err_mat::Matrix{Float64}, mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, ion::String, out_fp::String; yscale::String="linear")
+    plot_relative_normalization(h_plot, hums, hums_stds, calibData, calibData_std, params_mat, params_err_mat, mRes, ion, out_fp; yscale="linear")
 
-This function normalizes the sensitivities to the maximum value of Hexanone.
+Normalizes all calibration curves to the maximum sensitivity of Hexanone and plots the result.
+
+This function performs error propagation for the relative sensitivities and generates a 
+plot showing how the sensitivity of each ion changes relative to the reference standard 
+(Hexanone) over the humidity range.
 """
 function plot_relative_normalization(
     h_plot::Vector{Float64}, 
@@ -213,6 +247,21 @@ end
 
 # --- main function --------------------------------------------------
 
+"""
+    run_humidity_dependence_calibration(fp, calibFile_std, calibFile_bg, humFile; plotTime=...)
+
+Main function for the humidity-dependent calibration workflow.
+
+Loads the HDF5 results and Licor files, processes the averages, performs the 
+Double-Exponential fitting, generates all plots, and exports the final parameters.
+
+# Arguments
+- `fp`: The root directory for exporting results.
+- `calibFile_std`: Path to the standard calibration HDF5 result file.
+- `calibFile_bg`: Path to the background HDF5 result file.
+- `humFile`: Path to the Licor humidity text file.
+- `plotTime`: (Keyword) Vector containing start and end `DateTime` for analysis.
+"""
 function run_humidity_dependence_calibration(fp::String, calibFile_std::String, calibFile_bg::String, humFile::String; plotTime::Vector{DateTime} = [DateTime(2000, 1, 1), DateTime(3000, 1, 1)])
 
     plottime_start = plotTime[1]
@@ -236,8 +285,7 @@ function run_humidity_dependence_calibration(fp::String, calibFile_std::String, 
     humdat_bg = PlotFunctions.load_plotLicorData(humFile; ax=axTraces_bg, header=2)
 
     # 3. Time Averaging Logic
-    calibData, calibData_std, hums_avg, hums_stds, win = getHumiditySensitivity(measResult, humdat, measResult_bg; signaltimes=plotTime)
-    println("calibData, calibData_std, hums_avg, hums_stds sizes, win: ", size(calibData), size(calibData_std), length(hums_avg), length(hums_stds), win)
+    calibData, calibData_std, hums_avg, hums_stds, win = get_calibData(measResult, humdat, measResult_bg; signaltimes=plotTime)
 
     # 4. Shade Averaging Windows on data Plot
     ax_hum = axTraces.figure.get_axes()[2]  # twin axis is the last axis added to the figure
