@@ -115,7 +115,7 @@ function print_relative_error_summary(
     println("--------------------------------------\n")
 end
 
-# --- main Plotting & Fitting ---
+# ---  Plotting & Fitting ---
 
 """
     DoubleExponential_and_fit(hums, hums_stds, calibData, calibData_std, mRes, ion, out_fp; yscale="linear")
@@ -260,7 +260,7 @@ Double-Exponential fitting, generates all plots, and exports the final parameter
 - `calibFile_std`: Path to the standard calibration HDF5 result file.
 - `calibFile_bg`: Path to the background HDF5 result file.
 - `humFile`: Path to the Licor humidity text file.
-- `plotTime`: (Keyword) Vector containing start and end `DateTime` for analysis.
+- `plotTime`: Vector containing start and end `DateTime` for analysis.
 """
 function run_humidity_dependence_calibration(fp::String, calibFile_std::String, calibFile_bg::String, humFile::String; plotTime::Vector{DateTime} = [DateTime(2000, 1, 1), DateTime(3000, 1, 1)])
 
