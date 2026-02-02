@@ -39,7 +39,8 @@ Parse a chemical formula string and return a dictionary of element counts.
 """
 function parse_formula_to_composition(formula::String)
     
-    formula_clean = replace(formula, r"\d*[+-]" => "") # handles multiple charges, parentheses not handled
+    # Handle multiple charges -> remove charge notation in parentheses like (4+), (2-) where the number represents charge magnitude
+    formula_clean = replace(formula, r"\(\d*[+-]\)" => "")
     composition = Dict{String,Int}()
     
     # Match element symbol (uppercase letter optionally followed by lowercase) -> group [1]

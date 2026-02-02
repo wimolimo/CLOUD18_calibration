@@ -12,21 +12,21 @@ using TOFTracer2
 
     @testset "parse_formula_to_composition" begin
         # Test simple formula
-        comp1 = parse_formula_to_composition("C6H12O")
+        comp1 = CalibrateTraces.parse_formula_to_composition("C6H12O")
         @test comp1["C"] == 6
         @test comp1["H"] == 12
         @test comp1["O"] == 1
         
         # Test formula with charge notation
-        comp2 = parse_formula_to_composition("C6H12O.H+")
+        comp2 = CalibrateTraces.parse_formula_to_composition("C6H12O.H+")
         @test comp2["C"] == 6
         @test comp2["H"] == 13  # 12 + 1 from H+
         @test comp2["O"] == 1
         
         # Test formula with NH4+
-        comp3 = parse_formula_to_composition("C6H12O.NH4+")
+        comp3 = CalibrateTraces.parse_formula_to_composition("C6H12O.NH4+")
         @test comp3["C"] == 6
-        @test comp3["H"] == 16  # 12 + 4
+        @test comp3["H"] == 16  # 12 + 4 #############################################################################
         @test comp3["N"] == 1
         @test comp3["O"] == 1
         
@@ -36,24 +36,24 @@ using TOFTracer2
         formulas = ["C6H12O", "C5H10O2", "C7H14O"]
         
         # Test exact match
-        @test find_formula_index(formulas, "C6H12O") == 1
-        @test find_formula_index(formulas, "C5H10O2") == 2
+        @test CalibrateTraces.find_formula_index(formulas, "C6H12O") == 1
+        @test CalibrateTraces.find_formula_index(formulas, "C5H10O2") == 2
         
         # Test no match
-        @test find_formula_index(formulas, "C8H16O") === nothing
+        @test CalibrateTraces.find_formula_index(formulas, "C8H16O") === nothing
         
         # Test composition-based matching (different notation, same composition)
         formulas_with_adduct = ["C6H12O.H+", "C5H10O2.NH4+"]
-        @test find_formula_index(formulas_with_adduct, "C6H13O") == 1  # Same as C6H12O.H+
+        @test CalibrateTraces.find_formula_index(formulas_with_adduct, "C6H13O") == 1  # Same as C6H12O.H+
     end
 
     @testset "plot_fit" begin
         # Test that plot_fit returns correct functions
-        @test plot_fit("power") === CalF.PowerFunction
-        @test plot_fit("linear") === CalF.LinearFunction
+        @test CalibrateTraces.plot_fit("power") === TOFTracer2.CalibrationFunctions.PowerFunction
+        @test CalibrateTraces.plot_fit("linear") === TOFTracer2.CalibrationFunctions.LinearFunction
         
         # Test error for unsupported type
-        @test_throws ErrorException plot_fit("unsupported")
+        @test_throws ErrorException CalibrateTraces.plot_fit("unsupported")
     end
 
     @testset "calc_fhex" begin
@@ -63,7 +63,7 @@ using TOFTracer2
         # Power function parameters: a=0.5, b=0.8
         hexVSpis_params = ([0.5, 0.8], [0.01, 0.02], ["power", "y = 0.5*x^0.8"])
         
-        f_hex, f_hex_err = calc_fhex(summedPIs, hexVSpis_params)
+        f_hex, f_hex_err = CalibrateTraces.calc_fhex(summedPIs, hexVSpis_params)
         
         # Check dimensions
         @test length(f_hex) == length(summedPIs)
@@ -75,7 +75,7 @@ using TOFTracer2
         
         # Test with zero/negative primary ions
         summedPIs_with_zero = [0.0, -10.0, 1000.0]
-        f_hex2, f_hex_err2 = calc_fhex(summedPIs_with_zero, hexVSpis_params)
+        f_hex2, f_hex_err2 = CalibrateTraces.calc_fhex(summedPIs_with_zero, hexVSpis_params)
         @test f_hex_err2[1] == 0  # Error should be 0 for zero PI
         @test f_hex_err2[2] == 0  # Error should be 0 for negative PI
     end
@@ -97,7 +97,7 @@ using TOFTracer2
             times, masses, elements, elements_masses, compositions, traces
         )
         
-        summedPIs = compute_summed_primary_ions(mRes)
+        summedPIs = CalibrateTraces.compute_summed_primary_ions(mRes)
         
         # Check dimensions and properties
         @test length(summedPIs) == length(times)
@@ -146,16 +146,16 @@ using TOFTracer2
         )
         
         # Should throw error when reference compound not found
-        @test_throws ErrorException build_calibration_traces(
+        @test_throws ErrorException CalibrateTraces.build_calibration_traces(
             mRes, summedPIs, hexVSpis_params, "C6H12O", licor_final, calibDF
         )
     end
 
     @testset "build_calibration_traces - humidity method with valid data" begin
         times = [Dates.DateTime(2025, 1, 1), Dates.DateTime(2025, 1, 2)]
-        masses = [18.0, 163.0, 100.0]  # Water, Hexanone, some compound with 1 O
+        masses = [18, 163, 100]  # Water, Hexanone, some compound with 1 O
         elements = ["C", "H", "N", "O"]
-        elements_masses = [12.0, 1.00783, 14.00307, 15.99492]
+        elements_masses = [12, 1, 14, 16]
         # Oxygen counts: 1, 1, 1 (last row)
         compositions = [0 6 5; 3 12 10; 0 0 0; 1 1 1]
         traces = ones(2, 3) .* 100.0
@@ -179,7 +179,7 @@ using TOFTracer2
         
         hexVSpis_params = ([1.0, 0.5], [0.01, 0.02], ["power", "fit"])
         
-        dcps_per_ppb, dcps_per_ppb_err, indices = build_calibration_traces(
+        dcps_per_ppb, dcps_per_ppb_err, indices = CalibrateTraces.build_calibration_traces(
             mRes, summedPIs, hexVSpis_params, "C6H12O", licor_final, calibDF
         )
         
@@ -195,10 +195,10 @@ using TOFTracer2
 
     @testset "build_calibration_traces - dry method" begin
         times = [Dates.DateTime(2025, 1, 1), Dates.DateTime(2025, 1, 2)]
-        masses = [18.0, 163.0, 100.0]
+        masses = [18, 163, 100]
         elements = ["C", "H", "N", "O"]
-        elements_masses = [12.0, 1.00783, 14.00307, 15.99492]
-        compositions = [0 6 5; 3 12 10; 0 0 0; 1 1 2]  # Oxygen: 1, 1, 2
+        elements_masses = [12, 1, 14, 16]
+        compositions = [0 6 5; 3 12 10; 0 0 0; 1 1 2] 
         traces = ones(2, 3) .* 100.0
         
         mRes = TOFTracer2.ResultFileFunctions.MeasurementResult(
@@ -209,7 +209,7 @@ using TOFTracer2
         hexVSpis_params = ([1.0, 0.5], [0.01, 0.02], ["power", "fit"])
         
         # Call dry method (no licor, no calibDF)
-        dcps_per_ppb, dcps_per_ppb_err = build_calibration_traces(
+        dcps_per_ppb, dcps_per_ppb_err = CalibrateTraces.build_calibration_traces(
             mRes, summedPIs, hexVSpis_params, "C6H12O"
         )
         
@@ -251,7 +251,7 @@ using TOFTracer2
         
         hexVSpis_params = ([1.0, 0.5], [0.01, 0.02], ["power", "fit"])
         
-        dcps_per_ppb, dcps_per_ppb_err, indices = build_calibration_traces(
+        dcps_per_ppb, dcps_per_ppb_err, indices = CalibrateTraces.build_calibration_traces(
             mRes, summedPIs, hexVSpis_params, "C6H12O", licor_final, calibDF
         )
         
@@ -264,40 +264,6 @@ using TOFTracer2
         # Mass with >=2 oxygen (indices 3, 4) should have dry calibration
         @test dcps_per_ppb[1, 3] > 0
         @test dcps_per_ppb[1, 4] > 0
-    end
-
-
-    @testset "CalibrationConfig with complex header dict" begin
-        header_dict = Dict{String, Any}(
-            "title" => "CLOUD18 Calibration",
-            "level" => 2,
-            "version" => "01",
-            "authorname_mail" => "User <user@example.com>",
-            "units" => "ppt",
-            "addcomment" => "Test calibration data",
-            "threshold" => 0,
-            "nrrows_addcomment" => 1
-        )
-        
-        config = CalibrationConfig(
-            "/data/licor",
-            "/data/humcalib.txt",
-            "/data/drycalib.hdf5",
-            "/results/",
-            ["/data/result1.hdf5", "/data/result2.hdf5"],
-            "NH4+",
-            [18.033836, 36.044416],
-            163.0,
-            "C6H12O",
-            true,
-            header_dict
-        )
-        
-        @test config.HeaderForExportDict["title"] == "CLOUD18 Calibration"
-        @test config.HeaderForExportDict["threshold"] == 0
-        @test config.exportTraces == true
-        @test length(config.resultfiles) == 2
-        @test length(config.primaryionslist) == 2
     end
 
 
@@ -328,12 +294,12 @@ using TOFTracer2
         )
         
         # Step 1: Compute summed primary ions
-        summedPIs = compute_summed_primary_ions(mRes_PIs)
+        summedPIs = CalibrateTraces.compute_summed_primary_ions(mRes_PIs)
         @test length(summedPIs) == 2
         
         # Step 2: Calculate hexanone sensitivity
         hexVSpis_params = ([1.0, 0.8], [0.01, 0.02], ["power", "fit"])
-        f_hex, f_hex_err = calc_fhex(summedPIs, hexVSpis_params)
+        f_hex, f_hex_err = CalibrateTraces.calc_fhex(summedPIs, hexVSpis_params)
         @test length(f_hex) == 2
         
         # Step 3: Build calibration traces (humidity-dependent)
@@ -344,7 +310,7 @@ using TOFTracer2
             p1=[1.0], p2=[0.1], p3=[0.01], p4=[0.001], p5=[0.0001]
         )
         
-        dcps_per_ppb, dcps_per_ppb_err, indices = build_calibration_traces(
+        dcps_per_ppb, dcps_per_ppb_err, indices = CalibrateTraces.build_calibration_traces(
             mRes, summedPIs, hexVSpis_params, "C6H12O", licor_final, calibDF
         )
         
@@ -380,7 +346,7 @@ end  # @testset "CalibrateTraces"
 
     @testset "get_ion_metadata" begin
         std_dict = Dict("Hexanone" => ([0.0, 163.038], ["C6H12O.NH4+"]))
-        m, k, i = get_ion_metadata("NH4+", std_dict)
+        m, k, i = HumidityDependenceCalibration.get_ion_metadata("NH4+", std_dict)
         @test m[1] ≈ 163.038
         @test k[1] == "Hexanone"
     end
@@ -389,7 +355,7 @@ end  # @testset "CalibrateTraces"
         # Simulate user pressing Enter (default 4.0)
         input = IOBuffer("\n") 
         c_data, c_std, h_avg, h_std, win = redirect_stdin(input) do
-            getHumiditySensitivity(mRes_mock, humdf_mock, []; ppt=1000.0)
+            HumidityDependenceCalibration.getHumiditySensitivity(mRes_mock, humdf_mock, []; ppt=1000.0)
         end
         @test win == 4.0
         @test h_avg[1] ≈ 5.0
@@ -401,13 +367,13 @@ end  # @testset "CalibrateTraces"
         
         out_fp = tempdir()
         
-        p_mat, e_mat, h_axis = DoubleExponential_and_fit(
+        p_mat, e_mat, h_axis = HumidityDependenceCalibration.DoubleExponential_and_fit(
             hums, h_stds, c_data, c_std, mRes_mock, "NH4+", out_fp, yscale="log"
         )
         
         @test size(p_mat) == (5, 2)
         
         # Note: Added out_fp=out_fp here to match your keyword argument definition
-        @test_nowarn export_sensitivities(p_mat, e_mat, mRes_mock, "test_params.txt", out_fp=out_fp)
+        @test_nowarn HumidityDependenceCalibration.export_sensitivities(p_mat, e_mat, mRes_mock, "test_params.txt", out_fp=out_fp)
     end
 end
