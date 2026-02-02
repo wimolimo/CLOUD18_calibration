@@ -1,8 +1,8 @@
 """
     Module InletLossCorrection
 
-A module for performing inlet loss correction on CLOUD18 data.
-Exports the function `run_inlet_loss_correction`.
+Provides functionality to correct trace gas concentrations for diffusional losses in the 
+sampling inlet based on the CLOUD18 experimental setup.
 """
 module InletLossCorrection
 export run_inlet_loss_correction
@@ -13,24 +13,33 @@ using Dates
 using TOFTracer2
 
 
-resultfp = joinpath(@__DIR__, "..", "..", "CLOUD18_data", "Nonanal", "2025-11-25")
-fpcompositions = "$(resultfp)/ptr3compositions_CLOUDheader.txt"
-fptraces = "$(resultfp)/ptr3traces_CLOUDheader.csv"
-export_fp = "$(resultfp)"
 """
-    run_inlet_loss_correction(fp; timerange::Vector{DateTime} = [DateTime(2000,1,1), DateTime(3000,1,1)], export_fp::String = "$(resultfp)")
+    run_inlet_loss_correction(fp; timerange, export_fp)
 
-    Run Inlet Loss Correction, which is Transmission-corrected for a flow of 7 slpm.
+Performs inlet loss correction on exported CLOUD traces and compositions.
 
-    # Arguments
-    - `fp::String`: File path to the folder containing the exported compositions and traces.
-    - `timerange::Vector{DateTime}`: Vector with start and end DateTime for the time range to correct. Default is [DateTime(2000,1,1), DateTime(3000,1,1)].
-    - `export_fp::String`: File path to export the corrected compositions and traces. Default is the same as `fp`.
+The correction accounts for diffusional wall losses in the sampling line. It assumes a 
+total flow of 7 slpm and standard CLOUD sampling parameters (0.7m inlet length). 
+The function filters data by the provided `timerange`, applies the transmission 
+efficiency factor, and exports the result with a standardized CLOUD metadata header.
 
-    # Returns
-    - None. The corrected traces are exported to the specified file path.
+# Arguments
+- `fp::String`: Directory path containing the `ptr3compositions_CLOUDheader.txt` and `ptr3traces_CLOUDheader.csv` files.
+- `timerange::Vector{DateTime}`: A two-element vector `[start, end]` defining the period to correct. 
+  Defaults to the full range.
+- `export_fp::String`: Destination folder path for the corrected CSV files. Defaults to `fp`.
+
+# Scientific Parameters (Specific for CLOUD18 Inlet)
+- `flow`: 7 slpm (total flow).
+- `sampleflow`: 1 slpm.
+- `inletLength`: 0.7 m.
+- `chamberT`: 8 °C.
+- `ptrT`: 37 °C.
+
+# Returns
+- No return value. The corrected dataset is saved as a new CSV file in the `export_fp` directory.
 """
-function run_inlet_loss_correction(fp; timerange::Vector{DateTime} = [DateTime(2000,1,1), DateTime(3000,1,1)], export_fp::String = "$(resultfp)")
+function run_inlet_loss_correction(fp; timerange::Vector{DateTime} = [DateTime(2000,1,1), DateTime(3000,1,1)], export_fp::String = fp)
 
     fpcompositions = "$(fp)/ptr3compositions_CLOUDheader.txt"
     fptraces = "$(fp)/ptr3traces_CLOUDheader.csv"
