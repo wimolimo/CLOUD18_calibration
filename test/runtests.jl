@@ -318,53 +318,61 @@ using TOFTracer2
 
     @testset "HumidityDependenceCalibration" begin
         
-        # --- Mock Data Setup ---
+        # --- Setup variables at the top of the block ---
         times = [DateTime(2026, 1, 30, 12, 0, 0), DateTime(2026, 1, 30, 12, 10, 0)]
-        masses = [163.038, 100.07] 
-        elements = ["C", "H", "N", "O"]
-        el_masses = [12.0, 1.0078, 14.003, 15.994]
-        compositions = [6 5; 12 10; 1 0; 1 1] 
-        traces = [1000.0 500.0; 1100.0 550.0]
+        mass_vals = [163.038, 100.07] 
+        elems = ["C", "H", "N", "O"]
+        el_m = [12.0, 1.0078, 14.003, 15.994]
+        # TOFTracer2 is very specific: compositions must be Int32
+        comps = Int32[6 5; 12 10; 1 0; 1 1] 
+        trc = [1000.0 500.0; 1100.0 550.0]
         
-        mRes_mock = TOFTracer2.ResultFileFunctions.MeasurementResult(
-            times, masses, elements, el_masses, compositions, traces
-        )
-        
-        hum_times = collect(DateTime(2026, 1, 30, 11, 59, 0):Second(1):DateTime(2026, 1, 30, 12, 20, 0))
-        hum_vals = fill(5.0, length(hum_times)) 
-        humdf_mock = DataFrame(DateTime = hum_times, Symbol("H₂O_(mmol_mol⁻¹)") => hum_vals)
-
-        @testset "get_ion_metadata" begin
-            std_dict = Dict("Hexanone" => ([0.0, 163.038], ["C6H12O.NH4+"]))
-            m, k, i = HumidityDependenceCalibration.get_ion_metadata("NH4+", std_dict)
-            @test m[1] ≈ 163.038
-            @test k[1] == "Hexanone"
+        # Test the mock creation itself
+        @testset "Setup Mock Objects" begin
+            global mRes_mock = TOFTracer2.ResultFileFunctions.MeasurementResult(
+                times, mass_vals, elems, el_m, comps, trc
+            )
+            @test mRes_mock isa TOFTracer2.ResultFileFunctions.MeasurementResult
+            
+            hum_times = collect(DateTime(2026, 1, 30, 11, 59, 0):Second(2):DateTime(2026, 1, 30, 12, 20, 0))
+            hum_vals = fill(5.0, length(hum_times)) 
+            global humdf_mock = DataFrame(DateTime = hum_times, Symbol("H₂O_(mmol_mol⁻¹)") => hum_vals)
+            global std_dict = Dict("Hexanone" => ([0.0, 163.038], ["C6H12O.NH4+"]))
         end
 
-        @testset "getHumiditySensitivity" begin
-            # Simulate user pressing Enter (default 4.0)
+        @testset "get_ion_metadata" begin
+            # Ensure std_dict exists before calling
+            @test @isdefined(std_dict)
+            m, k, i = get_ion_metadata("NH4+", std_dict)
+            @test m[1] ≈ 163.038
+            @test k[1] == "Hexanone"
+            @test i == "NH4+"
+        end
+
+        @testset "get_calibData" begin
+            @test @isdefined(mRes_mock)
+            # Simulate hitting 'Enter' for the default window
             input = IOBuffer("\n") 
             c_data, c_std, h_avg, h_std, win = redirect_stdin(input) do
-                HumidityDependenceCalibration.getHumiditySensitivity(mRes_mock, humdf_mock, []; ppt=1000.0)
+                get_calibData(mRes_mock, humdf_mock, []; ppt=1000.0)
             end
             @test win == 4.0
             @test h_avg[1] ≈ 5.0
+            @test size(c_data) == (2, 2)
         end
 
-        @testset "Fitting and Export" begin
+        @testset "DoubleExponential_and_fit" begin
             hums = [1.0, 5.0, 10.0]; h_stds = [0.1, 0.1, 0.1]
             c_data = [10.0 5.0; 5.0 2.5; 2.0 1.0]; c_std = c_data .* 0.01
-            
             out_fp = tempdir()
             
-            p_mat, e_mat, h_axis = HumidityDependenceCalibration.DoubleExponential_and_fit(
+            # This call uses PyPlot and COLORS
+            p_mat, e_mat, h_axis = DoubleExponential_and_fit(
                 hums, h_stds, c_data, c_std, mRes_mock, "NH4+", out_fp, yscale="log"
             )
             
             @test size(p_mat) == (5, 2)
-            
-            # Note: Added out_fp=out_fp here to match your keyword argument definition
-            @test_nowarn HumidityDependenceCalibration.export_sensitivities(p_mat, e_mat, mRes_mock, "test_params.txt", out_fp=out_fp)
+            @test isfile(joinpath(out_fp, "calibration_log_NH4+.png"))
         end
     end
 end

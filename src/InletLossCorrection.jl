@@ -49,7 +49,7 @@ function run_inlet_loss_correction(fp; timerange::Vector{DateTime} = [DateTime(2
     # Nonanal run (24.11.2025 05:00 - 24.11.2025 10:00): flow = 7 slpm, chamberT = 8°C
     filter1 = timerange[1] .< mResult.Times .< timerange[2]
     transmissions1 = TOFTracer2.CalibrationFunctions.calculateInletTransmission_CLOUD(mResult.MasslistCompositions; 
-        ion = "NH4+", flow=7, sampleflow = 1,inletLength = 0.7, chamberT=8, roomT=25, ptrT=37)
+        ion = "NH4+", flow=7, sampleflow = 1,inletLength = 0.7, chamberT=8, roomT=25, ptrT=37)      # change temperature according to cloud data
 											
     #  Correction		
     mResult.Traces[filter1,:] .= mResult.Traces[filter1,:] ./ transpose(transmissions1)

@@ -1,14 +1,17 @@
 module HumidityDependenceCalibration
 
-export run_humidity_dependence_calibration, get_ion_metadata, compute_window_averages, print_relative_error_summary, fit_and_export_sensitivities, plot_relative_normalization
+export run_humidity_dependence_calibration, get_ion_metadata, get_calibData, print_relative_error_summary, DoubleExponential_and_fit, plot_relative_normalization, export_sensitivities
 
 using HDF5, PyCall, PyPlot, Dates, CSV, DataFrames, Statistics
 import LsqFit
 using TOFTracer2
+import TOFTracer2.MasslistFunctions # FIX: Add missing import
 import TOFTracer2.InterpolationFunctions as IntpF
 import TOFTracer2.CalibrationFunctions as CalF
 import TOFTracer2.ExportFunctions as ExpF
-import TOFTracer2.ImportFunctions as ImpF
+
+# FIX: Define missing global constant for plotting
+const COLORS = ["blue", "orange", "green", "red", "purple", "brown", "pink", "gray", "olive", "cyan"]
 
 # --- Helper Functions ---
 
@@ -118,7 +121,7 @@ end
 # ---  Plotting & Fitting ---
 
 """
-    DoubleExponential_and_fit(hums, hums_stds, calibData, calibData_std, mRes, ion, out_fp; yscale="linear")
+    DoubleExponential_and_fit(hums, hums_stds, calibData, calibData_std, mRes, ion, out_fp; yscale="log")
 
 Fits a double exponential curve to sensitivity data and generates a visualization.
 
@@ -142,7 +145,7 @@ function DoubleExponential_and_fit(
     mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, 
     ion::String, 
     out_fp::String; 
-    yscale::String="linear"
+    yscale::String="log"
 )
 
     colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan"]
@@ -213,7 +216,7 @@ function plot_relative_normalization(
     mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, 
     ion::String, 
     out_fp::String; 
-    yscale::String="linear"
+    yscale::String="log"
 )
 
     colors = ["tab:blue", "tab:orange", "tab:green", "tab:red", "tab:purple", "tab:brown", "tab:pink", "tab:gray", "tab:olive", "tab:cyan"]
