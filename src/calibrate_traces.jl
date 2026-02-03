@@ -12,6 +12,7 @@ using CSV
 using DataFrames
 using Dates
 using PyPlot
+using DelimitedFiles
 import Statistics: mean, std
 
 using TOFTracer2
@@ -127,7 +128,7 @@ Plot dry calibration data for primary ions and reference masses from the specifi
 - `primaryiontraces`: Traces of primary ions.
 - `referencetraces`: Traces of reference masses.
 """
-function scatterDryCalibs2(drycalibsfile::String; referenceMasses=refMass ,primaryions=primaryionslist) #modified from PlotFunctions.scatterDryCalibs
+function scatterDryCalibs2(drycalibsfile::String; referenceMasses=refMass, primaryions=primaryionslist) #modified from PlotFunctions.scatterDryCalibs
     if isempty(primaryions)
         primaryions = [
             MasslistFunctions.massFromComposition(H=2, O=1)
@@ -417,12 +418,17 @@ Return interpolated Licor humidity data to match the time points of the measurem
 - `licor_final::Vector`: Interpolated Licor humidity data aligned with measurement results time points. 
 """
 function interpolate_licor_to_ptr_time(mResfinal, licorDat)
-    return IntpF.sortSelectAverageSmoothInterpolate(
+    #= return IntpF.sortSelectAverageSmoothInterpolate(
         mResfinal.Times,
         licorDat.datetime,
         licorDat.H2O_mmolpermol;
         returnSTdev = false,
         selectY = [-Inf, Inf] # option to get rid of outliers via the kwarg 'selectY' (use wisely) #[-21, 5]
+    )=#
+    return IntpF.interpolate(
+        mResfinal.Times,
+        licorDat.datetime,
+        licorDat.H2O_mmolpermol
     )
 end
 
@@ -494,16 +500,13 @@ function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName
         params = row[[:p1, :p2, :p3, :p4, :p5]]
         index = findfirst(isapprox.(mResfinal.MasslistMasses, row.Mass; atol=0.0001)) #find masses in masslist matching compounds in calibDF (humidity dependent calibration data)
         f_hum_row = CalF.applyFunction(licor_final, params; functiontype = "double exponential") 
-        println("fum_hum_row: ", f_hum_row)
-        println("params: ", params)
-        println("index: ", index)
-
-        dcps_per_ppb[:, index] = f_hex .* f_hum_row
-        dcps_per_ppb_err[:, index] = dcps_per_ppb[:, index] .* sqrt.(f_hex_err.^2 .+ 0.0^2) # combine errors from dry and humid calibration
-        push!(indices, index)
-
-        println("dcps_per_ppb[:, index]: ", dcps_per_ppb[:, index])
-    end
+        
+        if index isa Int64
+            dcps_per_ppb[:, index] = f_hex .* f_hum_row
+            dcps_per_ppb_err[:, index] = dcps_per_ppb[:, index] .* sqrt.(f_hex_err.^2 .+ 0.0^2) # combine errors from dry and humid calibration
+            push!(indices, index)
+        end
+    end    
 
     return dcps_per_ppb, indices #indices of gas standard compounds calibrated individually
 end
