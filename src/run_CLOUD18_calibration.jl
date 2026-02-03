@@ -93,6 +93,3 @@ end
 
 # 3. Run Inlet Loss Correction
 CLOUD18_calibration.InletLossCorrection.run_inlet_loss_correction(resultfp; timerange=timerange, export_fp=resultfp)
-
-calibDF = CSV.read(humcalibfile, DataFrame; delim='\t', header=2)
-println(TOFTracer2.CalibrationFunctions.applyFunction(collect(1:0.1:10), [calibDF.p1, calibDF.p2, calibDF.p3, calibDF.p4, calibDF.p5], functiontype="double exponential") )
