@@ -356,7 +356,9 @@ function load_and_merge_results(resultfiles, primaryionslist)
     if length(resultfiles) > 1
         for i in 2:eachindex(resultfiles)
             mResfinal_PIs = ResultFileFunctions.joinResultsTime(mResfinal_PIs, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = true, massesToLoad = primaryionslist))
+            mResfinal_PIs.Traces .= mResfinal_PIs.Traces .* transpose(sqrt.(100 ./ mResfinal_PIs.MasslistMasses)) #duty cycle correction for primary ions
             mResfinal = ResultFileFunctions.joinResultsTime(mResfinal, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = true))
+            mResfinal.Traces .= mResfinal.Traces .* transpose(sqrt.(100 ./ mResfinal.MasslistMasses)) #duty cycle correction for all masses
         end
     end
 
@@ -379,7 +381,7 @@ Returns the summed primary ions from the measurement results.
 - `summedPIs::Vector`: Summed primary ion intensities in dcps.
 """
 function compute_summed_primary_ions(mResfinal_PIs)
-    summedPIs = vec(sum(mResfinal_PIs.Traces .* reshape(sqrt.(100 ./ mResfinal_PIs.MasslistMasses), 1, :); dims=2)) # Multiply each column by sqrt(100/mass) for duty-cycle correction, then sum across masses to get one value per time point
+    summedPIs = vec(sum(mResfinal_PIs.Traces, dims=2)) # sum across masses to get one value per time point
     summedPIs[summedPIs .<= 0] .= 0
     return summedPIs #in dcps
 end
