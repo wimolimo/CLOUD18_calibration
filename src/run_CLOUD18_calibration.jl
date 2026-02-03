@@ -9,6 +9,8 @@ using TOFTracer2
 using TOFTracer2.MasslistFunctions
 using TOFTracer2: massLibrary
 using Dates
+using CSV
+using DataFrames
 
 #################################
 # Define parameters for calibration
@@ -34,8 +36,8 @@ resultfp = joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #chang
 resultfiles = ["$(resultfp)/results/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
 
 #file to be calibrated at once with same mass list
-#resultfp = std_fp #joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #change result filepath to data that is analyzed #results of this script are also saved here
-#resultfiles = ["$(resultfp)/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
+resultfp = std_fp #joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #change result filepath to data that is analyzed #results of this script are also saved here
+resultfiles = ["$(resultfp)/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
 
 ionization = "NH4+" # "NH4+", "H+"...
 primaryionslist = [] #chosen by user
@@ -91,3 +93,6 @@ end
 
 # 3. Run Inlet Loss Correction
 CLOUD18_calibration.InletLossCorrection.run_inlet_loss_correction(resultfp; timerange=timerange, export_fp=resultfp)
+
+calibDF = CSV.read(humcalibfile, DataFrame; delim='\t', header=2)
+println(TOFTracer2.CalibrationFunctions.applyFunction(collect(1:0.1:10), [calibDF.p1, calibDF.p2, calibDF.p3, calibDF.p4, calibDF.p5], functiontype="double exponential") )

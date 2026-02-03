@@ -10,7 +10,6 @@ import TOFTracer2.InterpolationFunctions as IntpF
 import TOFTracer2.CalibrationFunctions as CalF
 import TOFTracer2.ExportFunctions as ExpF
 
-# FIX: Define missing global constant for plotting
 const COLORS = ["blue", "orange", "green", "red", "purple", "brown", "pink", "gray", "olive", "cyan"]
 
 # --- Helper Functions ---
@@ -174,7 +173,6 @@ function DoubleExponential_and_fit(
     # Construct matrices for export (5 rows: p1..p5, N columns: masses)
     params_mat = convert(Matrix{Float64}, hvcat(length(params_all), (params_all[a][j] for a in 1:length(params_all), j in 1:5)...))
     params_err_mat = convert(Matrix{Float64}, hvcat(length(params_err_all), (params_err_all[a][j] for a in 1:length(params_err_all), j in 1:5)...))
-    
     return params_mat, params_err_mat, hums_plot_range
 end
 

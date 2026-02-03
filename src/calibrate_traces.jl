@@ -475,7 +475,9 @@ function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName
 
     # wet sensitivity of hexanone vs AH
     f_hum = CalF.applyFunction(licor_final, ref_params; functiontype = "double exponential") #unitless # licor_final has length of times #use licor_final instead of CalF.applyFunction(fpfinal, humparams[1]; functiontype = humparams[3][1]) only if icor data is complete
-    
+    println("ref_params: ", ref_params)
+    println("f_hum: ", f_hum)
+    println("licor_final: ", licor_final)
     #1) dry / kinetic limit calibration for undef and >=2 O
     println("calibrating all compounds with >=2 oxygen atoms and undefined ones with reference $(refName) dry.")
     dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .= f_hex # f_hum0 not needed since f_hum0 = ones(length(mResfinal.Times)) # 1 because normalized to dry point of humidity dependent calibration of hexanone
@@ -492,12 +494,15 @@ function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName
         params = row[[:p1, :p2, :p3, :p4, :p5]]
         index = findfirst(isapprox.(mResfinal.MasslistMasses, row.Mass; atol=0.0001)) #find masses in masslist matching compounds in calibDF (humidity dependent calibration data)
         f_hum_row = CalF.applyFunction(licor_final, params; functiontype = "double exponential") 
+        println("fum_hum_row: ", f_hum_row)
+        println("params: ", params)
+        println("index: ", index)
 
-        if index isa Int
-            dcps_per_ppb[:, index] = f_hex .* f_hum_row
-            dcps_per_ppb_err[:, index] = dcps_per_ppb[:, index] .* sqrt.(f_hex_err.^2 .+ 0.0^2) # combine errors from dry and humid calibration
-            push!(indices, index)
-        end
+        dcps_per_ppb[:, index] = f_hex .* f_hum_row
+        dcps_per_ppb_err[:, index] = dcps_per_ppb[:, index] .* sqrt.(f_hex_err.^2 .+ 0.0^2) # combine errors from dry and humid calibration
+        push!(indices, index)
+
+        println("dcps_per_ppb[:, index]: ", dcps_per_ppb[:, index])
     end
 
     return dcps_per_ppb, indices #indices of gas standard compounds calibrated individually
