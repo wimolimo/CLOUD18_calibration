@@ -483,9 +483,7 @@ function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName
 
     # wet sensitivity of hexanone vs AH
     f_hum = CalF.applyFunction(licor_final, ref_params; functiontype = "double exponential") #unitless # licor_final has length of times #use licor_final instead of CalF.applyFunction(fpfinal, humparams[1]; functiontype = humparams[3][1]) only if icor data is complete
-    println("ref_params: ", ref_params)
-    println("f_hum: ", f_hum)
-    println("licor_final: ", licor_final)
+
     #1) dry / kinetic limit calibration for undef and >=2 O
     println("calibrating all compounds with >=2 oxygen atoms and undefined ones with reference $(refName) dry.")
     dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .= f_hex # f_hum0 not needed since f_hum0 = ones(length(mResfinal.Times)) # 1 because normalized to dry point of humidity dependent calibration of hexanone
