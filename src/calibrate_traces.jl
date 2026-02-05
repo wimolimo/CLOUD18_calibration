@@ -206,7 +206,6 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String, refMass, pr
     while (length(IFIG.coords) < nrOfIncludeCalibs)
         sleep(0.1)
     end
-    println("primaryionslist: ", primaryionslist)
     
     #Find closest datapoints
     include_idx = Int[]
@@ -226,21 +225,37 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String, refMass, pr
         ReferenceSignal = vec(sum(referencetraces[include_idx, :]; dims=2)) #sum across masses and convert to vector
     )
 
-    println("Origin point (0,0) is added to the data for the fit.")
-    df = vcat(DataFrame(PrimaryIonsSum=0, ReferenceSignal=0, Time=NaN), df)
+    
     
     figure()
     scatter(df.PrimaryIonsSum, df.ReferenceSignal, label="data", color="gray")
+    origin_point = scatter(0, 0, color="red", label="origin (0,0)")
+
     legend()
     xlabel("sum of primary ions [dcps]")
     ylabel("signal on reference mass [dcps/ppb]") # =dcps since std contains 1ppb of hexanone
     title("Dry Calibration Data Points Selected")
+    grid()
+    
+    println("Do you want to add an origin point (0,0) to the data for the fit? (y/n)")
+    add_origin = readline()
+    while !(add_origin in ["y", "n"])
+        println("Invalid input. Please enter 'y' for yes or 'n' for no.")
+        add_origin = readline()
+    end
 
-    if length(df.PrimaryIonsSum) < 4 # 4 not 3 because (0,0) is added already
+    if add_origin == "y"
+        df = vcat(DataFrame(PrimaryIonsSum=0, ReferenceSignal=0, Time=NaN), df)
+        origin_point.set_color("gray")
+    else
+        origin_point.remove()
+    end
+
+    if (length(df.PrimaryIonsSum) < 3 && !(add_origin == "y")) || (length(df.PrimaryIonsSum) < 4 && (add_origin == "y"))
         # If less than 3 calibration points are selected, only a linear fit can be applied, since for more complex fits the covariance matrix cannot be calculated and thus no fit parameters can be obtained. The linear fit is applied automatically in this case, but the user is informed about this.
         userinput = "linear"
         println("Less than 3 calibration points selected, linear fit will be applied.")
-        
+
     else
         # Fit user input
         println("Please choose fit function type: 'linear' or 'power'.") #'double exponential' doesnt work yet, due to covariance matrix issues # 'exponential' fit looks weird
@@ -251,15 +266,12 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String, refMass, pr
         end
     end
 
-    
-
     functiontype = userinput
-    println(df)
 
     # Fit selected data points
     hexVSpis_params = CalF.fitParameters(df.PrimaryIonsSum, df.ReferenceSignal; functiontype=functiontype)
     nrOfCalibs = nrow(df)
-    xforfit = collect(floor(minimum(df.PrimaryIonsSum); sigdigits=1):1000: ceil(maximum(df.PrimaryIonsSum); sigdigits=1))
+    xforfit = collect(0.0:1000: ceil(maximum(df.PrimaryIonsSum); sigdigits=1))
     fit_func = plot_fit(functiontype)
     fill_between(xforfit,
         fit_func(xforfit, hexVSpis_params[1] .- hexVSpis_params[2] / sqrt(nrOfCalibs)),
@@ -290,17 +302,27 @@ Calculate hexanone dry sensitivity vs primary ions and its uncertainty.
 """
 function calc_fhex(summedPIs, hexVSpis_params)
     #Hexanone dry sensitivity [cps/ppb] vs primary ion cps, calculated for all time points
+    
     f_hex = CalF.applyFunction(summedPIs, hexVSpis_params[1]; functiontype = hexVSpis_params[3][1]) #summedPIs has length times
-    f_hex_err = sqrt.( 
-        (hexVSpis_params[2][1]./(hexVSpis_params[1][1]))^2 #relative variance of parameter a (slope), (delta a / a)^2
-        .+ (log.(summedPIs[summedPIs .> 0]).*hexVSpis_params[2][2]).^2 #relative variance of parameter b (exponent), (ln x *delta b)^2
-        .+ 2*(hexVSpis_params[2][1]./(hexVSpis_params[1][1])*log.(summedPIs[summedPIs .> 0]).*hexVSpis_params[2][2]) #covariance term (2 delta a/a * ln x * delta b); 2 cov(a,b) = delta a * delta b is assumed
-    )
+    if hexVSpis_params[3][1] == "power"
+        f_hex_err = sqrt.( 
+            (hexVSpis_params[2][1]./(hexVSpis_params[1][1]))^2 #relative variance of parameter a (slope), (delta a / a)^2
+            .+ (log.(summedPIs[summedPIs .> 0]).*hexVSpis_params[2][2]).^2 #relative variance of parameter b (exponent), (ln x *delta b)^2
+            .+ 2*(hexVSpis_params[2][1]./(hexVSpis_params[1][1])*log.(summedPIs[summedPIs .> 0]).*hexVSpis_params[2][2]) #covariance term (2 delta a/a * ln x * delta b); 2 cov(a,b) = delta a * delta b is assumed
+        )
+    elseif hexVSpis_params[3][1] == "linear"
+        f_hex_err = sqrt.( 
+            (hexVSpis_params[2][2]).^2 #variance of parameter b (intercept), (delta b)^2
+            .+ (summedPIs[summedPIs .> 0].*hexVSpis_params[2][1]).^2 #variance of parameter a (slope), (x * delta a)^2
+            .+ 2*(summedPIs[summedPIs .> 0].*hexVSpis_params[2][2].*hexVSpis_params[2][1]) #covariance term (2 * x * delta b * delta a); 2 cov(a,b) = delta a * delta b is assumed
+        )
+    end
+
     f_hex_err[summedPIs .<= 0] .= 0
 
-    total_relative_error = f_hex_err # no humidity dependent calibration error included yet, f_hum_err is zero
+    total_relative_error = f_hex_err ./ f_hex    # no humidity dependent calibration error included yet, f_hum_err is zero
     mean_relative_error = mean(total_relative_error)
-    std_of_mean_relative_error = std(total_relative_error)
+    std_of_mean_relative_error = std(total_relative_error)/sqrt(length(total_relative_error)) # standard deviation of the mean relative error
     println("The relative standard error of the calibration factor for this method alone is a factor ",
         round(mean_relative_error,digits=3), " ± ",round(std_of_mean_relative_error,digits=3),
         " due to the error of the normalization to the primary ions.") #change print when f_hum_err != 0
@@ -312,12 +334,12 @@ function ask_for_PIList()
     println("Which primary ions will be used for the calibration?")
     println("press 'f': full list (all water and ammonium clusters)")
     println("press 'w': H3O+ and H2O.H3O+")
-    println("press 'a': NH4+ and NH3.NH4+")
+    println("press 'n': NH4+ and NH3.NH4+")
     println("press 'o': NH4+ only")
 
     userinput = readline()
-    while !(userinput in ["f", "w", "a", "o"])
-        println("Invalid input. Please enter 'f' for full list, 'a' for NH4+ and NH3.NH4+, 'w' for H3O+ and H2O.H3O+, or 'o' for NH4+ only.")
+    while !(userinput in ["f", "w", "n", "o"])
+        println("Invalid input. Please enter 'f' for full list, 'n' for NH4+ and NH3.NH4+, 'w' for H3O+ and H2O.H3O+, or 'o' for NH4+ only.")
         userinput = readline()
     end
     println("massLibrary: ", massLibrary)
@@ -325,7 +347,7 @@ function ask_for_PIList()
         primaryionslist = massLibrary.FullPrimaryionslist_NH4soft #adding all possible water and ammonium clusters: [18.033836, 19.017856000000002, 35.060396, 36.044416, 37.028436, 52.086956, 53.070975999999995, 54.054996, 72.065576]
     elseif userinput == "o"
         primaryionslist = MasslistFunctions.massFromComposition(H=3, N=1) #H+ is added automatically in massFromComposition
-    elseif userinput == "a"
+    elseif userinput == "n"
         primaryionslist = [MasslistFunctions.massFromComposition(H=3, N=1), 
                            MasslistFunctions.massFromComposition(H=6, N=2)] #NH4+ and NH3.NH4+
     elseif userinput == "w"
