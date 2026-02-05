@@ -193,47 +193,70 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String, refMass, pr
     dryCalibFig, dryCalibAx, mResDryCalibs, primaryiontraces, referencetraces = scatterDryCalibs2(drycalibsfile; referenceMasses=[refMass], primaryions=primaryionslist)
     # println("please give the minimum y-value to show")
     # dryCalibAx.set_ylim(bottom=parse(Int, readline()))
-    println("How many dry calibration data points do you want to exclude from the fit?")
-    nrOfExcludeCalibs = parse(Int, readline())
+    println("How many dry calibration data points do you want to include in the fit?")
+    nrOfIncludeCalibs = parse(Int, readline())
+    while !(nrOfIncludeCalibs in 1:length(mResDryCalibs.Times))
+        println("Please enter a valid number between 1 and $(length(mResDryCalibs.Times)).")
+        nrOfIncludeCalibs = parse(Int, readline())
+    end
+
     IFIG = PlotFunctions.InteractivePlot(drycalibsfile, dryCalibAx)
-    println("Select primary ion calibration coordinates to exclude by moving the mouse to the respective primary ion data point and press 'c'. Repeat until you have selected $nrOfExcludeCalibs point(s).")
+    println("Select primary ion calibration coordinates to include by moving the mouse to the respective primary ion data point and press 'c'. Repeat until you have selected $nrOfIncludeCalibs point(s).")
     PlotFunctions.getMouseCoords(IFIG; datetime_x=true)
-    while (length(IFIG.coords) < nrOfExcludeCalibs)
+    while (length(IFIG.coords) < nrOfIncludeCalibs)
         sleep(0.1)
     end
+    println("primaryionslist: ", primaryionslist)
     
     #Find closest datapoints
-    exclude_idx = Int[]
-    for i in 1:nrOfExcludeCalibs
+    include_idx = Int[]
+    for i in 1:nrOfIncludeCalibs
         t_click  = IFIG.coords[i][1] # ISO 8601 datetime string like "2025-10-11T09:31:27.405"
         y_click  = IFIG.coords[i][2]
         t_click_unix = Dates.datetime2unix(DateTime(t_click))
         t_data_unix = Dates.datetime2unix.(mResDryCalibs.Times)
         dists = (t_data_unix .- t_click_unix).^2 .+ (primaryiontraces .- y_click).^2 # Distance^2 in (Time, PrimaryIonsSum) space
-        push!(exclude_idx, argmin(dists))
+        push!(include_idx, argmin(dists))
     end
-    exclude_idx = unique(exclude_idx) # in case user clicked very close points, double selections are excluded
+
+    include_idx = unique(include_idx) # in case user clicked very close points, double selections are excluded
     df = DataFrame(
-        Time = mResDryCalibs.Times[Not(exclude_idx)], #exclude selected time points via their Indices
-        PrimaryIonsSum = vec(sum(primaryiontraces[Not(exclude_idx), :]; dims=2)), #sum across masses and convert to vector
-        ReferenceSignal = vec(sum(referencetraces[Not(exclude_idx), :]; dims=2)) #sum across masses and convert to vector
+        Time = mResDryCalibs.Times[include_idx], #include selected time points via their Indices
+        PrimaryIonsSum = vec(sum(primaryiontraces[include_idx, :]; dims=2)), #sum across masses and convert to vector
+        ReferenceSignal = vec(sum(referencetraces[include_idx, :]; dims=2)) #sum across masses and convert to vector
     )
 
+    println("Origin point (0,0) is added to the data for the fit.")
+    df = vcat(DataFrame(PrimaryIonsSum=0, ReferenceSignal=0, Time=NaN), df)
+    
     figure()
     scatter(df.PrimaryIonsSum, df.ReferenceSignal, label="data", color="gray")
     legend()
     xlabel("sum of primary ions [dcps]")
     ylabel("signal on reference mass [dcps/ppb]") # =dcps since std contains 1ppb of hexanone
+    title("Dry Calibration Data Points Selected")
 
-    # Fit
-    println("Please choose fit function type: 'linear' or 'power'.") #'double exponential' doesnt work yet, due to covariance matrix issues # 'exponential' fit looks weird
-    userinput = readline()
-    while !(userinput in ["linear", "power"])
-        println("This function is not implemented yet. Please choose fit function type: 'linear' or 'power'.")
+    if length(df.PrimaryIonsSum) < 4 # 4 not 3 because (0,0) is added already
+        # If less than 3 calibration points are selected, only a linear fit can be applied, since for more complex fits the covariance matrix cannot be calculated and thus no fit parameters can be obtained. The linear fit is applied automatically in this case, but the user is informed about this.
+        userinput = "linear"
+        println("Less than 3 calibration points selected, linear fit will be applied.")
+        
+    else
+        # Fit user input
+        println("Please choose fit function type: 'linear' or 'power'.") #'double exponential' doesnt work yet, due to covariance matrix issues # 'exponential' fit looks weird
         userinput = readline()
+        while !(userinput in ["linear", "power"])
+            println("This function is not implemented yet. Please choose fit function type: 'linear' or 'power'.")
+            userinput = readline()
+        end
     end
-    functiontype = userinput
 
+    
+
+    functiontype = userinput
+    println(df)
+
+    # Fit selected data points
     hexVSpis_params = CalF.fitParameters(df.PrimaryIonsSum, df.ReferenceSignal; functiontype=functiontype)
     nrOfCalibs = nrow(df)
     xforfit = collect(floor(minimum(df.PrimaryIonsSum); sigdigits=1):1000: ceil(maximum(df.PrimaryIonsSum); sigdigits=1))
@@ -286,21 +309,31 @@ function calc_fhex(summedPIs, hexVSpis_params)
 end
 
 function ask_for_PIList()
-    println("Which primary ions will be used for the calibration? For the full list for NH4+ soft ionization press 'f', for using only NH4+ press 'o'.")
+    println("Which primary ions will be used for the calibration?")
+    println("press 'f': full list (all water and ammonium clusters)")
+    println("press 'w': H3O+ and H2O.H3O+")
+    println("press 'a': NH4+ and NH3.NH4+")
+    println("press 'o': NH4+ only")
+
     userinput = readline()
-    while !(userinput in ["f", "o"])
-        println("Invalid input. Please enter 'f' for full list or 'o' for NH4+ only.")
+    while !(userinput in ["f", "w", "a", "o"])
+        println("Invalid input. Please enter 'f' for full list, 'a' for NH4+ and NH3.NH4+, 'w' for H3O+ and H2O.H3O+, or 'o' for NH4+ only.")
         userinput = readline()
     end
+    println("massLibrary: ", massLibrary)
     if userinput == "f"
         primaryionslist = massLibrary.FullPrimaryionslist_NH4soft #adding all possible water and ammonium clusters: [18.033836, 19.017856000000002, 35.060396, 36.044416, 37.028436, 52.086956, 53.070975999999995, 54.054996, 72.065576]
     elseif userinput == "o"
         primaryionslist = MasslistFunctions.massFromComposition(H=3, N=1) #H+ is added automatically in massFromComposition
+    elseif userinput == "a"
+        primaryionslist = [MasslistFunctions.massFromComposition(H=3, N=1), 
+                           MasslistFunctions.massFromComposition(H=6, N=2)] #NH4+ and NH3.NH4+
+    elseif userinput == "w"
+        primaryionslist = [MasslistFunctions.massFromComposition(H=2, O=1), 
+                           MasslistFunctions.massFromComposition(H=4, O=2)] #H2O and H2O.H3O+ clusters only
     end
-
     return primaryionslist
 end
-
 
 #the rest is modified from calibration script from Wiebke
 #################### calibration steps functions #############################

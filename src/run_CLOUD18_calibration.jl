@@ -31,13 +31,17 @@ bg_file = joinpath(dir_calib_data, "humidity_dependent_BG", "results", "_result.
 hum_file = joinpath(dir_licor_data, "2025-11-21.txt") #licor file for humidity dependent calibration 
 humcalibfile = joinpath(std_fp, "fitParameters_relative.txt") #humcalibfp
 
-#file to be calibrated at once with same mass list
-resultfp = joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #change result filepath to data that is analyzed #results of this script are also saved here
-resultfiles = ["$(resultfp)/results/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
+# Nonanal data to be calibrated
+# resultfp = joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #change result filepath to data that is analyzed #results of this script are also saved here
+# resultfiles = ["$(resultfp)/results/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
 
-#file to be calibrated at once with same mass list
+# humidity dependent calibration test file
 resultfp = std_fp #joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #change result filepath to data that is analyzed #results of this script are also saved here
 resultfiles = ["$(resultfp)/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
+
+# dry calibration test file
+#resultfp = joinpath(dir_calib_data, "dry_std", "results") #change result filepath to data that is analyzed #results of this script are also saved here
+#resultfiles = [drycalibsfile]  #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
 
 ionization = "NH4+" # "NH4+", "H+"...
 primaryionslist = [] #chosen by user
