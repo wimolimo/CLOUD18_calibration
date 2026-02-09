@@ -272,7 +272,7 @@ function run_humidity_dependence_calibration(fp::String, calibFile_std::String, 
     masses_plot, keys_list, ion = get_ion_metadata("NH4+", massLibrary.CLOUD_brownSTD_masses)
 
     # 2. Raw Loading & Plotting
-    (fig, axTraces,legstrings, measResult) = PlotFunctions.plotTracesFromHDF5(calibFile_std, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
+    (fig, axTraces, legstrings, measResult) = PlotFunctions.plotTracesFromHDF5(calibFile_std, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
     (fig_bg, axTraces_bg, legstrings_bg, measResult_bg) = PlotFunctions.plotTracesFromHDF5(calibFile_bg, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
     
     # Plot BG averages line
