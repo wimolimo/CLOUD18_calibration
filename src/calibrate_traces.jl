@@ -641,7 +641,7 @@ function export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderFor
     # either with
     # - findVaryingMasses (often filters too harsh!!!) only for long measurements (10 days) or high Res data
     # - findChangingMasses (if BG and signal times clear!)
-    
+    #=
     c = ResultFileFunctions.findVaryingMasses(calibResult.MasslistMasses,
         calibResult.MasslistCompositions,
         calibResult.Traces;
@@ -649,11 +649,12 @@ function export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderFor
         noNitrogen = false,
         onlySaneMasses = false,
         filterCrosstalkMasses=false,
-        pointsForSmoothing = 5)
+        pointsForSmoothing = 5,
+        sorting = "mass")
     IndOfinterest = c[1]
     
     #or:
- #= 
+ 
     #interactive selection of traces to export
     iifig = PlotFunctions.InteractivePlot(calibResult)
     println("Please select the traces you want to export by scrolling and pressing 'a'.") #how can you terminate the selection?
@@ -675,10 +676,10 @@ function export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderFor
     ExpF.exportTracesCSV_CLOUD(
         resultfp,
         calibResult.MasslistElements,
-        calibResult.MasslistMasses[IndOfinterest],
-        calibResult.MasslistCompositions[:,IndOfinterest],
+        calibResult.MasslistMasses,
+        calibResult.MasslistCompositions,
         calibResult.Times,
-        calibResult.Traces[:,IndOfinterest];
+        calibResult.Traces;
         transmission = 0,
         headers = HeaderForExport,
         ion = ionization,
