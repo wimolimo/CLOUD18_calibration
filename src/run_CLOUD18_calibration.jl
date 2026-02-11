@@ -43,25 +43,36 @@ humcalibfile = joinpath(std_fp, "fitParameters_relative.txt") #humcalibfp
 resultfp = joinpath(dir_calib_data, "dry_std", "results")
 resultfiles = [drycalibsfile]
 
-ionization = "NH4+" # "NH4+", "H+"...
+ionization = "NH3H+" #  "H+"...
 primaryionslist = [] #chosen by user
-refMass = TOFTracer2.massLibrary.HEXANONE_nh4[1] #mass of hexanone + NH4+
-refName = TOFTracer2.MasslistFunctions.sumFormulaStringFromCompositionArray(massLibrary.HEXANONE_nh4[4]; ion = "H+") #since createCompound adds H+ automatically -> C6H15ON.H+
+refCompound = MasslistFunctions.createCompound(C=6, H=15,O=1,N=1) # Hexanone
+refMass = refCompound[1] #mass of refCompound
+refName = TOFTracer2.MasslistFunctions.sumFormulaStringFromCompositionArray(refCompound[4]; ion = ionization) #name of refCompound with ionization for export
 
 exportTraces = true # if true, check HeaderForExportDict below:
+run = "theRunYouAnalyze_partX"
+campaign = "CLOUD18" #for export
 HeaderForExportDict = Dict(
-        "title"=>"Example calibration of Nonanal data set from CLOUD18 campaign",
-        "level"=>2,
-        "version"=>"01",
-        "authorname_mail"=>"Ruth, Clea clea.ruth@uibk.ac.at; Wittler, Timo wittler.timo@uibk.ac.at",
+        "title"=>"Humidity-dependent calibrated data (for directly calibrated species) of Experiment ... from $(campaign) campaign", # add here specific infos! RunNrs or Topic...
+        "level"=>1, # level 0: raw data, level 1: postprocessed but unchecked data, level 2: "ready for use in publications"
+        "version"=>"01", # change, if you reprocess after having the data uploaded to cernbox before
+        "authorname_mail"=>"LastName, FirstName email@(student.)uibk.ac.at", 
         "units"=>"ppt",
-        "addcomment"=>"The data have been humidity-depently calibrated with Hexanone as reference (Onr=1), compounds with Onr>1 are calibrated with kinetic limit. All traces have been corrected to the duty-cycle-corrected primary ion trace. Uncertainty roughly factor 3. Not transmission-corrected yet.\n",
-        "threshold"=>0,
-        "nrrows_addcomment"=>1
+        "addcomment"=>"The data have been humidity-dependently calibrated with Hexanone as reference (Onr=1), \n compounds with Onr>1 are calibrated with the maximum sensitivity (dry Hexanone). \n All traces have been corrected to the duty-cycle-corrected primary ion trace.\n",
+        "threshold"=>0, #sigma-Threshold you apply for filtering data. If you do not apply filtering yet, keep it zero.
+        "nrrows_addcomment"=>3 # Ensure, this nr corresponds to the nr of '\n' in your addcomment.
         )
 
-#select time window for inlet loss correction
-timerange=[DateTime(2000,1,1), DateTime(3000,1,1)]
+# select time window and respective chamber-temperature for inlet loss correction. 
+# If only one chambertemperature condition applies to the calibrated data, only one time window can be selected. 
+# If multiple chamber temperature conditions apply, multiple time windows can be selected and respective chamber temperatures can be assigned, e.g. for IEPOX runs:
+#=
+timeranges=[(DateTime(2025,10,29), DateTime(2025,11,6,11,0)),
+           (DateTime(2025,11,6,14,0), DateTime(2025,11,8,5,0))] #select time window for inlet loss correction (e.g., for nonanal run with known conditions)
+chamberTs = [15,-30] # use a vector even for just one entry
+=#
+timeranges=[(DateTime(2025,9,1), DateTime(2025,12,2))] # select time window for inlet loss correction to correspond to times of different chamber temperatures within your calibrated dataset (example: basically no filtering (all of CLOUD18 included))
+chamberTs = [15] # adjust according to your data. Use a vector, even for only 1 value!
 
 #########################
 # Run calibration steps
@@ -76,7 +87,7 @@ let
                 input_humcalib = readline()
         end
         if input_humcalib == "y"
-        CLOUD18_calibration.HumidityDependenceCalibration.run_humidity_dependence_calibration(std_fp, std_file, bg_file, hum_file)
+        CLOUD18_calibration.HumidityDependenceCalibration.run_humidity_dependence_calibration(std_fp, std_file, bg_file, hum_file, ion=ionization)
         end
 end
 
@@ -89,11 +100,21 @@ let
                 userinput = readline()
         end
         if userinput == "y"
-                CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+                mResfinal, dcps_per_ppb = CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
         elseif userinput == "n"
-                CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+                mResfinal, dcps_per_ppb = CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
         end
 end
-
-# 3. Run Inlet Loss Correction
-CLOUD18_calibration.InletLossCorrection.run_inlet_loss_correction(resultfp; timerange=timerange, export_fp=resultfp)
+# 3. Run Inlet Loss Correction for each chamber temperature condition applicable to the calibrated data
+#CLOUD18_calibration.InletLossCorrection.run_inlet_loss_correction(resultfp; timerange=timerange, export_fp=resultfp)
+CLOUD18_calibration.InletLossCorrection.run_inlet_loss_correction(resultfp; 
+                timeranges=timeranges, 
+                export_fp=resultfp, 
+                ion = ionization, 
+                flow=8.2, # 7 slpm inletflow (logbook CLOUD18) + 1.2 slpm sampleflow
+                sampleflow = 1.2,
+                inletLength = 0.7,
+                chamberTs=chamberTs, 
+                HeaderForExportDict = HeaderForExportDict, 
+                campaign=campaign,
+                run=run)

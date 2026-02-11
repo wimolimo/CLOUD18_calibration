@@ -39,39 +39,25 @@ efficiency factor, and exports the result with a standardized CLOUD metadata hea
 # Returns
 - No return value. The corrected dataset is saved as a new CSV file in the `export_fp` directory.
 """
-function run_inlet_loss_correction(fp; timerange::Vector{DateTime} = [DateTime(2000,1,1), DateTime(3000,1,1)], export_fp::String = fp)
+function run_inlet_loss_correction(fp; timeranges:: Vector{Tuple{DateTime, DateTime}} = [(DateTime(2000,1,1), DateTime(3000,1,1))], export_fp::String = fp, ion = "NH3H+", flow=8, sampleflow = 1.2,inletLength = 0.9, chamberTs=[0], HeaderForExportDict = Dict(), campaign="CLOUD18", run::String="")
 
-    fpcompositions = "$(fp)/ptr3compositions_CLOUDheader.txt"
-    fptraces = "$(fp)/ptr3traces_CLOUDheader.csv"
+    for (time, chamberT) in zip(timeranges, chamberTs)
+        println("Running inlet loss correction for chamber temperature: ", chamberT, "°C")      
+        fpcompositions = "$(fp)/ptr3compositions_CLOUDheader.txt"
+        fptraces = "$(fp)/ptr3traces_CLOUDheader.csv"
+        mResult = TOFTracer2.ImportFunctions.importExportedTraces(fptraces, fpcompositions)
+        filter = time[1] .< mResult.Times .< time[2]
 
-    mResult = TOFTracer2.ImportFunctions.importExportedTraces(fptraces, fpcompositions)
+        transmissions = TOFTracer2.CalibrationFunctions.calculateInletTransmission_CLOUD(mResult.MasslistCompositions; 
+        ion = ion, flow=flow, sampleflow = sampleflow,inletLength = inletLength, chamberT=chamberT, roomT=25, ptrT=37)      # change temperature according to cloud data
+			
+        #  Correction		
+        mResult.Traces[filter,:] .= mResult.Traces[filter,:] ./ transpose(transmissions)
 
-    # Nonanal run (24.11.2025 05:00 - 24.11.2025 10:00): flow = 7 slpm, chamberT = 8°C
-    filter1 = timerange[1] .< mResult.Times .< timerange[2]
-    transmissions1 = TOFTracer2.CalibrationFunctions.calculateInletTransmission_CLOUD(mResult.MasslistCompositions; 
-        ion = "NH4+", flow=7, sampleflow = 1,inletLength = 0.7, chamberT=8, roomT=25, ptrT=37)      # change temperature according to cloud data
-											
-    #  Correction		
-    mResult.Traces[filter1,:] .= mResult.Traces[filter1,:] ./ transpose(transmissions1)
+        HeaderForExportDict["addcomment"] = string(HeaderForExportDict["addcomment"],"Transmission-corrected for a total flow rate of $(flow)slpm.\n")
+        HeaderForExportDict["nrrows_addcomment"] = HeaderForExportDict["nrrows_addcomment"] + 1
 
-    # exporting
-    # run for per filter & transmission
-
-    HeaderForExportDict = Dict(
-            "title"=>"oxidized hydrocarbons from Nonanal runs at 8°C",
-            "level"=>2,
-            "version"=>"01",
-            "authorname_mail"=>"Ruth, Clea clea.ruth@uibk.ac.at; Wittler, Timo, wittler.timo@uibk.ac.at",
-            "units"=>"ppt",
-            "addcomment"=>"The data have been humidity-depently calibrated with Hexanone as reference (Onr=[1,2]),
-            compounds with Onr>2 are calibrated with kinetic limit.
-            All traces have been corrected to the duty-cycle-corrected primary ion trace.
-            Uncertainty roughly factor 3. Transmission-corrected for a total flow of 8 slpm.\n",
-            "threshold"=>0,
-            "nrrows_addcomment" => 4
-            )
-
-    HeaderForExport = TOFTracer2.ExportFunctions.CLOUDheader(mResult.Times[filter1];
+        HeaderForExport = TOFTracer2.ExportFunctions.CLOUDheader(mResult.Times[filter];
             title = HeaderForExportDict["title"],
             level=HeaderForExportDict["level"],
             version=HeaderForExportDict["version"],
@@ -81,16 +67,19 @@ function run_inlet_loss_correction(fp; timerange::Vector{DateTime} = [DateTime(2
             threshold=HeaderForExportDict["threshold"],
             nrrows_addcomment = HeaderForExportDict["nrrows_addcomment"])
 
-    TOFTracer2.ExportFunctions.exportTracesCSV_CLOUD(export_fp,
+        TOFTracer2.ExportFunctions.exportTracesCSV_CLOUD(export_fp,
             mResult.MasslistElements,
             mResult.MasslistMasses,
             mResult.MasslistCompositions,
-            mResult.Times[filter1],
-            mResult.Traces[filter1,:];
-            transmission=transmissions1,
+            mResult.Times[filter],
+            mResult.Traces[filter,:];
+            transmission=transmissions,
             headers = HeaderForExport,
-            ion = "NH4+",
-            average=0)
+            ion = ion,
+            average=0,
+            filenameAddition="_UIBK_oVOCs_$(run)_$(campaign)_inletLossCorr_T$(chamberT)C_V1")
+
+    end
 end
 
 end # module InletLossCorrection
