@@ -1058,7 +1058,7 @@ version = "7.7.0+0"
 
 [[deps.TOFTracer2]]
 deps = ["CSV", "ColorSchemes", "DSP", "DataFrames", "Dates", "DelimitedFiles", "Distributed", "HDF5", "LaTeXStrings", "LsqFit", "PyCall", "PyPlot", "SharedArrays", "SparseArrays", "SpecialFunctions", "Statistics", "Trapz"]
-path = "../TOF-Tracer2-dev"
+path = "../TOF-Tracer2-master"
 uuid = "767abeae-b283-44e3-97fa-db60ef46027d"
 version = "0.2.0"
 

@@ -220,9 +220,9 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String, refMass, pr
 
     include_idx = unique(include_idx) # in case user clicked very close points, double selections are excluded
     df = DataFrame(
-        Time = vcat(mResDryCalibs.Times[include_idx][1] - Dates.Minute(20),mResDryCalibs.Times[Not(exclude_idx)]), #include selected time points via their Indices
-        PrimaryIonsSum = vcat(0,vec(sum(primaryiontraces[include_idx, :]; dims=2))), #sum across masses and convert to vector
-        ReferenceSignal = vcat(0,vec(sum(referencetraces[include_idx, :]; dims=2))) #sum across masses and convert to vector
+        Time = mResDryCalibs.Times[include_idx], #include selected time points via their Indices
+        PrimaryIonsSum = vec(sum(primaryiontraces[include_idx, :]; dims=2)), #sum across masses and convert to vector
+        ReferenceSignal = vec(sum(referencetraces[include_idx, :]; dims=2)) #sum across masses and convert to vector
     )
 
     
