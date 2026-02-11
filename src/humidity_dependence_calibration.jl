@@ -21,7 +21,7 @@ const COLORS = ["blue", "orange", "green", "red", "purple", "brown", "pink", "gr
 Extracts target m/z values and compound labels from a standard dictionary based on the ionization mode.
 
 # Arguments
-- `ions_type`: The ionization mode, typically "NH4+" or "H+".
+- `ions_type`: The ionization mode, typically "NH3H+" or "H+".
 - `std_dict`: A dictionary (e.g., from `massLibrary`) containing compound names as keys and 
   m/z values as the first element of the value tuple.
 
@@ -30,7 +30,7 @@ Extracts target m/z values and compound labels from a standard dictionary based 
 """
 function get_ion_metadata(ions_type::String, std_dict::AbstractDict)
     masses, keys_list = Float64[], String[]
-    idx = (ions_type == "NH4+") ? 2 : 1
+    idx = (ions_type == "NH3H+") ? 2 : 1
     for key in keys(std_dict)
         push!(masses, std_dict[key][1][idx])
         push!(keys_list, key)
@@ -56,6 +56,7 @@ signals and subtracts background levels if `mRes_bg` is provided.
 
 # Returns
 - A tuple: `(calibData, calibData_std, hums_avg, hums_std, window_minutes)`.
+units: calibData [dcps / ppt], hums [ppth]
 """
 function get_calibData(
     mRes::TOFTracer2.ResultFileFunctions.MeasurementResult, 
@@ -233,13 +234,13 @@ function plot_relative_normalization(
     fig, ax = subplots(figsize=(10, 6))
     for i in 1:length(mRes.MasslistMasses)
 
-        y_rel = calibData[:, i] ./ max_hex
+        y_rel = abs.(calibData[:, i] ./ max_hex)
         # σ_rel = y_rel * sqrt((σy/y)^2 + (σhex/hex)^2)
-        y_rel_err = y_rel .* sqrt.((calibData_std[:, i] ./ calibData[:, i]).^2 )
+        y_rel_err = y_rel .* sqrt.((calibData_std[:, i].^2 ./ calibData[:, i]).^2 ) # correct?
         
         ax.plot(h_plot, CalF.DoubleExponential(h_plot, p_rel[:, i]), color=colors[mod1(i, 10)])
         ax.errorbar(hums, y_rel, yerr=y_rel_err, xerr=hums_stds, marker="o", linestyle="None", color=colors[mod1(i, 10)], capsize=3, 
-        label="m/z $(round(mRes.MasslistMasses[i],digits=3)) - $(MasslistFunctions.sumFormulaStringFromCompositionArray(mRes.MasslistCompositions[:,i], ion = "NH3H+"))")
+        label="m/z $(round(mRes.MasslistMasses[i],digits=3)) - $(MasslistFunctions.sumFormulaStringFromCompositionArray(mRes.MasslistCompositions[:,i], ion = ion))")
     end
     ax.set_ylabel("Rel. Sensitivity to Hexanone"); ax.set_xlabel("Absolute Humidity"); ax.set_title("Relative Humidity-dependent Calibration")
     ax.set_yscale(yscale); ax.legend(); ax.grid(true, alpha=0.3)
@@ -265,17 +266,17 @@ Double-Exponential fitting, generates all plots, and exports the final parameter
 - `humFile`: Path to the Licor humidity text file.
 - `plotTime`: Vector containing start and end `DateTime` for analysis.
 """
-function run_humidity_dependence_calibration(fp::String, calibFile_std::String, calibFile_bg::String, humFile::String; plotTime::Vector{DateTime} = [DateTime(2000, 1, 1), DateTime(3000, 1, 1)])
+function run_humidity_dependence_calibration(fp::String, calibFile_std::String, calibFile_bg::String, humFile::String; plotTime::Vector{DateTime} = [DateTime(2000, 1, 1), DateTime(3000, 1, 1)],ion::String="NH3H+")
 
     plottime_start = plotTime[1]
     plottime_end = plotTime[2]
 
     # 1. Metadata Selection
-    masses_plot, keys_list, ion = get_ion_metadata("NH4+", massLibrary.CLOUD_brownSTD_masses)
+    masses_plot, keys_list, ion = get_ion_metadata(ion, massLibrary.CLOUD_brownSTD_masses)
 
     # 2. Raw Loading & Plotting
-    (fig, axTraces, measResult) = PlotFunctions.plotTracesFromHDF5(calibFile_std, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
-    (fig_bg, axTraces_bg, measResult_bg) = PlotFunctions.plotTracesFromHDF5(calibFile_bg, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
+    (fig, axTraces, legstrings, measResult) = PlotFunctions.plotTracesFromHDF5(calibFile_std, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
+    (fig_bg, axTraces_bg, legstrings_bg, measResult_bg) = PlotFunctions.plotTracesFromHDF5(calibFile_bg, masses_plot; plotHighTimeRes=false, timeFrame2plot=(plottime_start, plottime_end), ion=ion)
     
     # Plot BG averages line
     bg_m = vec(mean(measResult_bg.Traces, dims=1))
@@ -304,6 +305,7 @@ function run_humidity_dependence_calibration(fp::String, calibFile_std::String, 
     params, params_err, fig_sensitivity = DoubleExponential_and_fit(hums_avg, hums_stds, calibData, calibData_std, measResult, ion, fp, yscale="log")
     println("Fitted parameters type: ", typeof(params), typeof(params_err))
     export_sensitivities(params, params_err, measResult, "fitParameters.txt", out_fp=fp)
+    show(params)
     
     # Relative Sensitivities
     plot_relative_normalization(fig_sensitivity, hums_avg, hums_stds, calibData, calibData_std, params, params_err, measResult, ion, fp, yscale="log")

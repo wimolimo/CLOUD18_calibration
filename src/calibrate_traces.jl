@@ -212,10 +212,11 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String, refMass, pr
         push!(exclude_idx, argmin(dists))
     end
     exclude_idx = unique(exclude_idx) # in case user clicked very close points, double selections are excluded
+    # create dataframe of all calibs that were not excluded, plus adding a fake point at (0,0)
     df = DataFrame(
-        Time = mResDryCalibs.Times[Not(exclude_idx)], #exclude selected time points via their Indices
-        PrimaryIonsSum = vec(sum(primaryiontraces[Not(exclude_idx), :]; dims=2)), #sum across masses and convert to vector
-        ReferenceSignal = vec(sum(referencetraces[Not(exclude_idx), :]; dims=2)) #sum across masses and convert to vector
+        Time = vcat(mResDryCalibs.Times[Not(exclude_idx)][1] - Dates.Minute(20),mResDryCalibs.Times[Not(exclude_idx)]), #exclude selected time points via their Indices
+        PrimaryIonsSum = vcat(0,vec(sum(primaryiontraces[Not(exclude_idx), :]; dims=2))), #sum across masses and convert to vector
+        ReferenceSignal = vcat(0,vec(sum(referencetraces[Not(exclude_idx), :]; dims=2))) #sum across masses and convert to vector
     )
 
     figure()
@@ -261,7 +262,7 @@ Calculate hexanone dry sensitivity vs primary ions and its uncertainty.
 - `hexVSpis_params::Tuple`: Hexanone vs primary ion parameters.
 
 # Returns
-- `f_hex::Vector`: Hexanone dry sensitivity [cps/ppb] vs primary ion cps.
+- `f_hex::Vector`: Hexanone dry sensitivity [dcps/ppb] vs primary ion dcps.
 - `f_hex_err::Vector`: Uncertainty of hexanone dry sensitivity.
 """
 function calc_fhex(summedPIs, hexVSpis_params)
@@ -314,7 +315,7 @@ Load or create and save hexanone vs. primary ion calibration parameters, using T
 - `primaryionslist`: List of primary ion masses for calibration.
 
 # Returns
-- `hexVSpis_params::Tuple`: Tuple containing parameters, errors, and metadata
+- `hexVSpis_params::Tuple`: Tuple containing parameters, errors, and metadata. Hexanone was in dcps/ppb, PIs in dcps.
 
 # Saves
 - CSV file with hexanone vs. primary ion calibration parameters if loaded from HDF5, in the same directory as `drycalibsfile`.
@@ -353,7 +354,7 @@ function load_and_merge_results(resultfiles, primaryionslist)
     #mResfinal_PIs.MasslistCompositions = #########TO DO: rewrite name from C10H15H+.NH4+ to C10H16.NH4+
 
     if length(resultfiles) > 1
-        for i in 2:eachindex(resultfiles)
+        for i in 2:length(resultfiles)
             mResfinal_PIs = ResultFileFunctions.joinResultsTime(mResfinal_PIs, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = true, massesToLoad = primaryionslist))
             mResfinal = ResultFileFunctions.joinResultsTime(mResfinal, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = true))
         end
@@ -397,7 +398,7 @@ Load Licor humidity data from text files in the specified directory.
 """
 function load_licor_data(dir_licor_data::String)
     return ImpF.createLicorData_fromFiles(dir_licor_data;
-        filefilter=r"licor_.*\.txt", #rename file to use with licor_restofthename.txt
+        filefilter=r".*\.txt", #trusting, that all .txt files in the directory are actual licor data files, otherwise specify a more specific regex pattern
         headerrow=2,
         columnNameOfInterest="H₂O_(mmol_mol⁻¹)",
         type_columnOfInterest=Float64)
@@ -696,7 +697,7 @@ end
 
 Main function to calibrate measurement traces. Two methods are available:
 - With humidity-dependent calibration: Applies humidity-dependent calibration for 1-oxygen compounds and individually calibrated gas standard compounds. Requires Licor humidity data and humidity calibration parameters.
-- Dry calibration only: Applies dry calibration to all compounds (except 0-oxygen compounds). Suitable for temperatures >0°C or when humidity data is unavailable.
+- Dry calibration only: Applies dry calibration to all compounds (except 0-oxygen compounds). Suitable for temperatures <<0°C or when humidity data is unavailable.
 
 # Arguments
 - `dir_licor_data::String`: (Humidity method only) Directory path containing Licor data files.
@@ -742,6 +743,7 @@ function calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resu
     if exportTraces
         export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderForExportDict, resultfp)
     end
+    return mResfinal, dcps_per_ppb
 end
 
 function calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
@@ -755,6 +757,7 @@ function calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization,
     if exportTraces
         export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderForExportDict, resultfp)
     end
+    return mResfinal, dcps_per_ppb
 end
 
 
