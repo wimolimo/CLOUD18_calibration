@@ -40,7 +40,7 @@ humcalibfile = joinpath(std_fp, "fitParameters_relative.txt") #humcalibfp
 #resultfiles = ["$(resultfp)/_result.hdf5"] 
 
 #dry calibs data as result for testing if 1ppb hexanone is correctly calibrated to 1ppb at dry conditions
-result_fp = joinpath(dir_calib_data, "dry_std", "results")
+resultfp = joinpath(dir_calib_data, "dry_std", "results")
 resultfiles = [drycalibsfile]
 
 ionization = "NH4+" # "NH4+", "H+"...
