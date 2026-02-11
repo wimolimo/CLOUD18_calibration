@@ -99,6 +99,16 @@ let
                 mResfinal, dcps_per_ppb = CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
         end
 end
-
-# 3. Run Inlet Loss Correction
-CLOUD18_calibration.InletLossCorrection.run_inlet_loss_correction(resultfp; timerange=timerange, export_fp=resultfp)
+# 3. Run Inlet Loss Correction for each chamber temperature condition applicable to the calibrated data
+#CLOUD18_calibration.InletLossCorrection.run_inlet_loss_correction(resultfp; timerange=timerange, export_fp=resultfp)
+CLOUD18_calibration.InletLossCorrection.run_inlet_loss_correction(resultfp; 
+                timeranges=timeranges, 
+                export_fp=resultfp, 
+                ion = ionization, 
+                flow=8.2, # 7 slpm inletflow (logbook CLOUD18) + 1.2 slpm sampleflow
+                sampleflow = 1.2,
+                inletLength = 0.7,
+                chamberTs=chamberTs, 
+                HeaderForExportDict = HeaderForExportDict, 
+                campaign=campaign,
+                run=run)
