@@ -20,7 +20,7 @@ Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 TOFTracer2 = "767abeae-b283-44e3-97fa-db60ef46027d"
 
 [sources]
-TOFTracer2 = {path = "..\\TOF-Tracer2-dev"}
+TOFTracer2 = {path = "..\\TOF-Tracer2-master"}
 
 [compat]
 CSV = "0.10.15"

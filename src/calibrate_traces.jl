@@ -12,6 +12,7 @@ using CSV
 using DataFrames
 using Dates
 using PyPlot
+using DelimitedFiles
 import Statistics: mean, std
 
 using TOFTracer2
@@ -127,7 +128,7 @@ Plot dry calibration data for primary ions and reference masses from the specifi
 - `primaryiontraces`: Traces of primary ions.
 - `referencetraces`: Traces of reference masses.
 """
-function scatterDryCalibs2(drycalibsfile::String; referenceMasses=refMass ,primaryions=primaryionslist) #modified from PlotFunctions.scatterDryCalibs
+function scatterDryCalibs2(drycalibsfile::String; referenceMasses=refMass, primaryions=primaryionslist) #modified from PlotFunctions.scatterDryCalibs
     if isempty(primaryions)
         primaryions = [
             MasslistFunctions.massFromComposition(H=2, O=1)
@@ -192,51 +193,85 @@ function dryCal_selectPIandRefDataInteractive(drycalibsfile::String, refMass, pr
     dryCalibFig, dryCalibAx, mResDryCalibs, primaryiontraces, referencetraces = scatterDryCalibs2(drycalibsfile; referenceMasses=[refMass], primaryions=primaryionslist)
     # println("please give the minimum y-value to show")
     # dryCalibAx.set_ylim(bottom=parse(Int, readline()))
-    println("How many dry calibration data points do you want to exclude from the fit?")
-    nrOfExcludeCalibs = parse(Int, readline())
+    println("How many dry calibration data points do you want to include in the fit?")
+    nrOfIncludeCalibs = parse(Int, readline())
+    while !(nrOfIncludeCalibs in 1:length(mResDryCalibs.Times))
+        println("Please enter a valid number between 1 and $(length(mResDryCalibs.Times)).")
+        nrOfIncludeCalibs = parse(Int, readline())
+    end
+
     IFIG = PlotFunctions.InteractivePlot(drycalibsfile, dryCalibAx)
-    println("Select primary ion calibration coordinates to exclude by moving the mouse to the respective primary ion data point and press 'c'. Repeat until you have selected $nrOfExcludeCalibs point(s).")
+    println("Select primary ion calibration coordinates to include by moving the mouse to the respective primary ion data point and press 'c'. Repeat until you have selected $nrOfIncludeCalibs point(s).")
     PlotFunctions.getMouseCoords(IFIG; datetime_x=true)
-    while (length(IFIG.coords) < nrOfExcludeCalibs)
+    while (length(IFIG.coords) < nrOfIncludeCalibs)
         sleep(0.1)
     end
     
     #Find closest datapoints
-    exclude_idx = Int[]
-    for i in 1:nrOfExcludeCalibs
+    include_idx = Int[]
+    for i in 1:nrOfIncludeCalibs
         t_click  = IFIG.coords[i][1] # ISO 8601 datetime string like "2025-10-11T09:31:27.405"
         y_click  = IFIG.coords[i][2]
         t_click_unix = Dates.datetime2unix(DateTime(t_click))
         t_data_unix = Dates.datetime2unix.(mResDryCalibs.Times)
         dists = (t_data_unix .- t_click_unix).^2 .+ (primaryiontraces .- y_click).^2 # Distance^2 in (Time, PrimaryIonsSum) space
-        push!(exclude_idx, argmin(dists))
+        push!(include_idx, argmin(dists))
     end
-    exclude_idx = unique(exclude_idx) # in case user clicked very close points, double selections are excluded
-    # create dataframe of all calibs that were not excluded, plus adding a fake point at (0,0)
+
+    include_idx = unique(include_idx) # in case user clicked very close points, double selections are excluded
     df = DataFrame(
-        Time = vcat(mResDryCalibs.Times[Not(exclude_idx)][1] - Dates.Minute(20),mResDryCalibs.Times[Not(exclude_idx)]), #exclude selected time points via their Indices
-        PrimaryIonsSum = vcat(0,vec(sum(primaryiontraces[Not(exclude_idx), :]; dims=2))), #sum across masses and convert to vector
-        ReferenceSignal = vcat(0,vec(sum(referencetraces[Not(exclude_idx), :]; dims=2))) #sum across masses and convert to vector
+        Time = vcat(mResDryCalibs.Times[include_idx][1] - Dates.Minute(20),mResDryCalibs.Times[Not(exclude_idx)]), #include selected time points via their Indices
+        PrimaryIonsSum = vcat(0,vec(sum(primaryiontraces[include_idx, :]; dims=2))), #sum across masses and convert to vector
+        ReferenceSignal = vcat(0,vec(sum(referencetraces[include_idx, :]; dims=2))) #sum across masses and convert to vector
     )
 
+    
+    
     figure()
     scatter(df.PrimaryIonsSum, df.ReferenceSignal, label="data", color="gray")
+    origin_point = scatter(0, 0, color="red", label="origin (0,0)")
+
     legend()
     xlabel("sum of primary ions [dcps]")
     ylabel("signal on reference mass [dcps/ppb]") # =dcps since std contains 1ppb of hexanone
-
-    # Fit
-    println("Please choose fit function type: 'linear' or 'power'.") #'double exponential' doesnt work yet, due to covariance matrix issues # 'exponential' fit looks weird
-    userinput = readline()
-    while !(userinput in ["linear", "power"])
-        println("This function is not implemented yet. Please choose fit function type: 'linear' or 'power'.")
-        userinput = readline()
+    title("Dry Calibration Data Points Selected")
+    grid()
+    
+    println("Do you want to add an origin point (0,0) to the data for the fit? (y/n)")
+    add_origin = readline()
+    while !(add_origin in ["y", "n"])
+        println("Invalid input. Please enter 'y' for yes or 'n' for no.")
+        add_origin = readline()
     end
+
+    if add_origin == "y"
+        df = vcat(DataFrame(PrimaryIonsSum=0, ReferenceSignal=0, Time=NaN), df)
+        origin_point.set_color("gray")
+    else
+        origin_point.remove()
+    end
+
+    if (length(df.PrimaryIonsSum) < 3 && !(add_origin == "y")) || (length(df.PrimaryIonsSum) < 4 && (add_origin == "y"))
+        # If less than 3 calibration points are selected, only a linear fit can be applied, since for more complex fits the covariance matrix cannot be calculated and thus no fit parameters can be obtained. The linear fit is applied automatically in this case, but the user is informed about this.
+        userinput = "linear"
+        println("Less than 3 calibration points selected, linear fit will be applied.")
+
+    else
+        # Fit user input
+        println("Please choose fit function type: 'linear' or 'power'.") #'double exponential' doesnt work yet, due to covariance matrix issues # 'exponential' fit looks weird
+        userinput = readline()
+        while !(userinput in ["linear", "power"])
+            println("This function is not implemented yet. Please choose fit function type: 'linear' or 'power'.")
+            userinput = readline()
+        end
+    end
+
     functiontype = userinput
 
+    # Fit selected data points
     hexVSpis_params = CalF.fitParameters(df.PrimaryIonsSum, df.ReferenceSignal; functiontype=functiontype)
     nrOfCalibs = nrow(df)
-    xforfit = collect(floor(minimum(df.PrimaryIonsSum); sigdigits=1):1000: ceil(maximum(df.PrimaryIonsSum); sigdigits=1))
+    xforfit = collect(0.0:1000: ceil(maximum(df.PrimaryIonsSum); sigdigits=1))
     fit_func = plot_fit(functiontype)
     fill_between(xforfit,
         fit_func(xforfit, hexVSpis_params[1] .- hexVSpis_params[2] / sqrt(nrOfCalibs)),
@@ -267,17 +302,27 @@ Calculate hexanone dry sensitivity vs primary ions and its uncertainty.
 """
 function calc_fhex(summedPIs, hexVSpis_params)
     #Hexanone dry sensitivity [cps/ppb] vs primary ion cps, calculated for all time points
+    
     f_hex = CalF.applyFunction(summedPIs, hexVSpis_params[1]; functiontype = hexVSpis_params[3][1]) #summedPIs has length times
-    f_hex_err = sqrt.( 
-        (hexVSpis_params[2][1]./(hexVSpis_params[1][1]))^2 #relative variance of parameter a (slope), (delta a / a)^2
-        .+ (log.(summedPIs[summedPIs .> 0]).*hexVSpis_params[2][2]).^2 #relative variance of parameter b (exponent), (ln x *delta b)^2
-        .+ 2*(hexVSpis_params[2][1]./(hexVSpis_params[1][1])*log.(summedPIs[summedPIs .> 0]).*hexVSpis_params[2][2]) #covariance term (2 delta a/a * ln x * delta b); 2 cov(a,b) = delta a * delta b is assumed
-    )
+    if hexVSpis_params[3][1] == "power"
+        f_hex_err = sqrt.( 
+            (hexVSpis_params[2][1]./(hexVSpis_params[1][1]))^2 #relative variance of parameter a (slope), (delta a / a)^2
+            .+ (log.(summedPIs[summedPIs .> 0]).*hexVSpis_params[2][2]).^2 #relative variance of parameter b (exponent), (ln x *delta b)^2
+            .+ 2*(hexVSpis_params[2][1]./(hexVSpis_params[1][1])*log.(summedPIs[summedPIs .> 0]).*hexVSpis_params[2][2]) #covariance term (2 delta a/a * ln x * delta b); 2 cov(a,b) = delta a * delta b is assumed
+        )
+    elseif hexVSpis_params[3][1] == "linear"
+        f_hex_err = sqrt.( 
+            (hexVSpis_params[2][2]).^2 #variance of parameter b (intercept), (delta b)^2
+            .+ (summedPIs[summedPIs .> 0].*hexVSpis_params[2][1]).^2 #variance of parameter a (slope), (x * delta a)^2
+            .+ 2*(summedPIs[summedPIs .> 0].*hexVSpis_params[2][2].*hexVSpis_params[2][1]) #covariance term (2 * x * delta b * delta a); 2 cov(a,b) = delta a * delta b is assumed
+        )
+    end
+
     f_hex_err[summedPIs .<= 0] .= 0
 
-    total_relative_error = f_hex_err # no humidity dependent calibration error included yet, f_hum_err is zero
+    total_relative_error = f_hex_err ./ f_hex    # no humidity dependent calibration error included yet, f_hum_err is zero
     mean_relative_error = mean(total_relative_error)
-    std_of_mean_relative_error = std(total_relative_error)
+    std_of_mean_relative_error = std(total_relative_error)/sqrt(length(total_relative_error)) # standard deviation of the mean relative error
     println("The relative standard error of the calibration factor for this method alone is a factor ",
         round(mean_relative_error,digits=3), " ± ",round(std_of_mean_relative_error,digits=3),
         " due to the error of the normalization to the primary ions.") #change print when f_hum_err != 0
@@ -286,21 +331,31 @@ function calc_fhex(summedPIs, hexVSpis_params)
 end
 
 function ask_for_PIList()
-    println("Which primary ions will be used for the calibration? For the full list for NH4+ soft ionization press 'f', for using only NH4+ press 'o'.")
+    println("Which primary ions will be used for the calibration?")
+    println("press 'f': full list (all water and ammonium clusters)")
+    println("press 'w': H3O+ and H2O.H3O+")
+    println("press 'n': NH4+ and NH3.NH4+")
+    println("press 'o': NH4+ only")
+
     userinput = readline()
-    while !(userinput in ["f", "o"])
-        println("Invalid input. Please enter 'f' for full list or 'o' for NH4+ only.")
+    while !(userinput in ["f", "w", "n", "o"])
+        println("Invalid input. Please enter 'f' for full list, 'n' for NH4+ and NH3.NH4+, 'w' for H3O+ and H2O.H3O+, or 'o' for NH4+ only.")
         userinput = readline()
     end
+    println("massLibrary: ", massLibrary)
     if userinput == "f"
         primaryionslist = massLibrary.FullPrimaryionslist_NH4soft #adding all possible water and ammonium clusters: [18.033836, 19.017856000000002, 35.060396, 36.044416, 37.028436, 52.086956, 53.070975999999995, 54.054996, 72.065576]
     elseif userinput == "o"
         primaryionslist = MasslistFunctions.massFromComposition(H=3, N=1) #H+ is added automatically in massFromComposition
+    elseif userinput == "n"
+        primaryionslist = [MasslistFunctions.massFromComposition(H=3, N=1), 
+                           MasslistFunctions.massFromComposition(H=6, N=2)] #NH4+ and NH3.NH4+
+    elseif userinput == "w"
+        primaryionslist = [MasslistFunctions.massFromComposition(H=2, O=1), 
+                           MasslistFunctions.massFromComposition(H=4, O=2)] #H2O and H2O.H3O+ clusters only
     end
-
     return primaryionslist
 end
-
 
 #the rest is modified from calibration script from Wiebke
 #################### calibration steps functions #############################
@@ -356,7 +411,9 @@ function load_and_merge_results(resultfiles, primaryionslist)
     if length(resultfiles) > 1
         for i in 2:length(resultfiles)
             mResfinal_PIs = ResultFileFunctions.joinResultsTime(mResfinal_PIs, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = true, massesToLoad = primaryionslist))
+            mResfinal_PIs.Traces .= mResfinal_PIs.Traces .* transpose(sqrt.(100 ./ mResfinal_PIs.MasslistMasses)) #duty cycle correction for primary ions
             mResfinal = ResultFileFunctions.joinResultsTime(mResfinal, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = true))
+            mResfinal.Traces .= mResfinal.Traces .* transpose(sqrt.(100 ./ mResfinal.MasslistMasses)) #duty cycle correction for all masses
         end
     end
 
@@ -379,7 +436,7 @@ Returns the summed primary ions from the measurement results.
 - `summedPIs::Vector`: Summed primary ion intensities in dcps.
 """
 function compute_summed_primary_ions(mResfinal_PIs)
-    summedPIs = vec(sum(mResfinal_PIs.Traces .* reshape(sqrt.(100 ./ mResfinal_PIs.MasslistMasses), 1, :); dims=2)) # Multiply each column by sqrt(100/mass) for duty-cycle correction, then sum across masses to get one value per time point
+    summedPIs = vec(sum(mResfinal_PIs.Traces, dims=2)) # sum across masses to get one value per time point
     summedPIs[summedPIs .<= 0] .= 0
     return summedPIs #in dcps
 end
@@ -418,12 +475,17 @@ Return interpolated Licor humidity data to match the time points of the measurem
 - `licor_final::Vector`: Interpolated Licor humidity data aligned with measurement results time points. 
 """
 function interpolate_licor_to_ptr_time(mResfinal, licorDat)
-    return IntpF.sortSelectAverageSmoothInterpolate(
+    #= return IntpF.sortSelectAverageSmoothInterpolate(
         mResfinal.Times,
         licorDat.datetime,
         licorDat.H2O_mmolpermol;
         returnSTdev = false,
         selectY = [-Inf, Inf] # option to get rid of outliers via the kwarg 'selectY' (use wisely) #[-21, 5]
+    )=#
+    return IntpF.interpolate(
+        mResfinal.Times,
+        licorDat.datetime,
+        licorDat.H2O_mmolpermol
     )
 end
 
@@ -476,7 +538,7 @@ function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName
 
     # wet sensitivity of hexanone vs AH
     f_hum = CalF.applyFunction(licor_final, ref_params; functiontype = "double exponential") #unitless # licor_final has length of times #use licor_final instead of CalF.applyFunction(fpfinal, humparams[1]; functiontype = humparams[3][1]) only if icor data is complete
-    
+
     #1) dry / kinetic limit calibration for undef and >=2 O
     println("calibrating all compounds with >=2 oxygen atoms and undefined ones with reference $(refName) dry.")
     dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .= f_hex # f_hum0 not needed since f_hum0 = ones(length(mResfinal.Times)) # 1 because normalized to dry point of humidity dependent calibration of hexanone
@@ -493,13 +555,13 @@ function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName
         params = row[[:p1, :p2, :p3, :p4, :p5]]
         index = findfirst(isapprox.(mResfinal.MasslistMasses, row.Mass; atol=0.0001)) #find masses in masslist matching compounds in calibDF (humidity dependent calibration data)
         f_hum_row = CalF.applyFunction(licor_final, params; functiontype = "double exponential") 
-
-        if index isa Int
+        
+        if index isa Int64
             dcps_per_ppb[:, index] = f_hex .* f_hum_row
             dcps_per_ppb_err[:, index] = dcps_per_ppb[:, index] .* sqrt.(f_hex_err.^2 .+ 0.0^2) # combine errors from dry and humid calibration
             push!(indices, index)
         end
-    end
+    end    
 
     return dcps_per_ppb, indices #indices of gas standard compounds calibrated individually
 end
