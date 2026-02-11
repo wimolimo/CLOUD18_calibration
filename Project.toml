@@ -1,7 +1,7 @@
 name = "CLOUD18_calibration"
 uuid = "aea52f13-5aae-4f1b-90a3-a8b28c4d85ad"
-version = "1.0.0-DEV"
 authors = ["Timo Wittler wittler.timo@uibk.ac.at", "Clea Ruth clea.ruth@student.uibk.ac.at"]
+version = "1.0.0-DEV"
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
@@ -15,6 +15,7 @@ PyCall = "438e738f-606a-5dbb-bf0a-cddfbfd45ab0"
 PyPlot = "d330b81b-6aea-500a-939a-2ce795aea3ee"
 PythonCall = "6099a3de-0909-46bc-b1f4-468b9a2dfc0d"
 PythonPlot = "274fc56d-3b97-40fa-a1cd-1b4a50311bf9"
+Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
 TOFTracer2 = "767abeae-b283-44e3-97fa-db60ef46027d"
 
@@ -33,6 +34,7 @@ PyCall = "1.96.4"
 PyPlot = "2.11.6"
 PythonCall = "0.9.31"
 PythonPlot = "1.0.6"
+Revise = "3.13.2"
 Statistics = "1.11.1"
-TOFTracer2 = "0.1.0"
+TOFTracer2 = "0.2.0"
 julia = "1.11.7"
