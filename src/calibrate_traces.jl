@@ -531,6 +531,12 @@ function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName
     undeffilter = BitVector(sum(mResfinal.MasslistCompositions; dims=1)[1, :] .== 0)
     oxygen_number = findfirst(==("O"), mResfinal.MasslistElements)
     oneoxygenfilter = BitVector(mResfinal.MasslistCompositions[oxygen_number, :] .== 1)
+    hydrogen_number = findfirst(==("H"), mResfinal.MasslistElements)
+    nitrogen_number = findfirst(==("N"), mResfinal.MasslistElements)
+    carbon_number = findfirst(==("C"), mResfinal.MasslistElements)
+    radicalfilter = BitVector(abs.(mResfinal.MasslistCompositions[hydrogen_number, :] .+ mResfinal.MasslistCompositions[nitrogen_number, :]) .% 2 .== 1 ) # filter for odd number of (H + N) atoms, which is a common indicator for radicals
+    lowCarbonNrfilter = BitVector(mResfinal.MasslistCompositions[carbon_number, :] .<= 7)
+    lowOxidizedradicalfilter = BitVector(mResfinal.MasslistCompositions[oxygen_number, :] .< 4) .&  radicalfilter .& lowCarbonNrfilter # filter for radicals with 1 oxygen (e.g. C10H15O.) to exclude them from the humidity dependent calibration, since they are expected to behave more like >=2 oxygen compounds
     twoplusoxygenfilter = BitVector(mResfinal.MasslistCompositions[oxygen_number, :] .>= 2)
 
     println("found $(sum(undeffilter)) undefined masses, $(sum(oneoxygenfilter)) masses with 1 oxygen atom, and $(sum(twoplusoxygenfilter)) masses with >=2 oxygen atoms")
@@ -539,7 +545,7 @@ function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName
     dcps_per_ppb = zeros(length(mResfinal.Times), length(mResfinal.MasslistMasses))
     dcps_per_ppb_err = zeros(size(dcps_per_ppb))
 
-    # dry sensitivity of hexanone vs PIs
+    # dry sensitivity of hexanone vs PIs (kinetic limit!)
     f_hex, f_hex_err = calc_fhex(summedPIs, hexVSpis_params)
 
     # wet sensitivity of hexanone vs AH
@@ -550,10 +556,10 @@ function build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName
     dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .= f_hex # f_hum0 not needed since f_hum0 = ones(length(mResfinal.Times)) # 1 because normalized to dry point of humidity dependent calibration of hexanone
     dcps_per_ppb_err[:, (undeffilter .| twoplusoxygenfilter)] .= dcps_per_ppb[:, (undeffilter .| twoplusoxygenfilter)] .* f_hex_err # no humidity dependent calibration error for dry calibration
 
-    #2) humid / equilibrium calibration for 1 O
+    #2) humid / equilibrium calibration for 1 O and radicals up to 3 O
     println("calibrating all compounds with 1 oxygen atom humidity-dependent with reference $(refName).")
-    dcps_per_ppb[:, oneoxygenfilter] .= f_hex .* f_hum
-    dcps_per_ppb_err[:, oneoxygenfilter] .= dcps_per_ppb[:, oneoxygenfilter] .* sqrt.(f_hex_err.^2 .+ 0.0^2) # combine errors from dry and humid calibration
+    dcps_per_ppb[:, (oneoxygenfilter .| lowOxidizedradicalfilter)] .= f_hex .* f_hum
+    dcps_per_ppb_err[:, (oneoxygenfilter .| lowOxidizedradicalfilter)] .= dcps_per_ppb[:, (oneoxygenfilter .| lowOxidizedradicalfilter)] .* sqrt.(f_hex_err.^2 .+ 0.0^2) # combine errors from dry and humid calibration
 
     #3) individual calib (hum dep) for the compounds in the gas standard -> hum dep calibration file.
     indices = Int[]

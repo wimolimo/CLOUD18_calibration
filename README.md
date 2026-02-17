@@ -82,7 +82,7 @@ TOFTracer2 = {path = "..\\TOF-Tracer2-dev"}
 include("src/run_CLOUD18_calibration.jl")
 ```
 
-#### Step 1: Humidity Dependence Calibration (Optional)
+#### Step 1: Humidity Dependent Calibration (Optional)
 Generate humidity-dependent parameters from controlled standard gas measurements at varying absolute humidity:
 
 The script will ask you whether you want to do the humidity dependence calibration, since it is only
@@ -92,8 +92,7 @@ the humidity for each humidity step. The default is 4 min, which you can use by 
 The output will then give you four figures with (1) the calibration Traces and their humidities (also the
 time averages are shaded), (2) the calibration Traces of the background measurement, (3) the Double Exponential
 Fit of the Humidity Dependence of the Sensitivity and (4) the Double Exponential Fit of the Humidity Dependence
-of the Sensitivity relative to Hexanone. (3) and (4) are being saved as a png file, while the absolute fit parameters and the fit parameters relative
- to Hexanone get written into a txt file.
+of the Sensitivity relative to Hexanone. (3) and (4) are being saved as a png file, while the absolute fit parameters and the fit parameters relative to Hexanone get written into a txt file.
 
 **Output**: 
 - `fitParameters.txt` with double exponential fit parameters (p1-p5) for each compound
@@ -125,7 +124,7 @@ The script will interactively guide you through the workflow:
 - Exported traces (CSV in CLOUD format, if enabled)
 
 #### Step 3: Inlet Loss Correction
-Apply transmission corrections for sampling line losses.
+Apply transmission corrections for sampling line losses for sampled molecules individually, based on their volatility.
 ##########################################################################################################
 
 ## Configuration
@@ -260,6 +259,7 @@ where:
 - **Undefined masses**: Dry calibration with hexanone
 - **0 oxygen**: Not calibrated (zero sensitivity assumed)
 - **1 oxygen**: Humidity-dependent calibration (equilibrium regime)
+- **small radicals**: Radicals with less than 8 carbon atoms and less than 4 oxygen atoms are calibrated humidity-dependent
 - **≥2 oxygen**: Dry calibration (kinetic limit regime)
 - **Gas standard compounds**: Individual humidity-dependent calibration
 
