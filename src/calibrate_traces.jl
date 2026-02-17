@@ -396,7 +396,7 @@ end
 
 
 """
-    load_and_merge_results(resultfiles, primaryionslist)
+    load_and_merge_results(resultfiles, primaryionslist; onlyUseAverages = true)
 
 Load and merge measurement results from multiple result files and return the merged results for all masses and for the primary ions only.
 
@@ -408,17 +408,17 @@ Load and merge measurement results from multiple result files and return the mer
 - `mResfinal::struct`: Merged measurement results for all masses (selectedTimes, selectedMasslistMasses, masslistElements, masslistElementsMasses, selectedMassesCompositions, traces).
 - `mResfinal_PIs::struct`: Merged measurement results for primary ions only.
 """
-function load_and_merge_results(resultfiles, primaryionslist)
-    mResfinal_PIs = ResultFileFunctions.loadResults(resultfiles[1]; useAveragesOnly = true, massesToLoad = primaryionslist)
-    mResfinal = ResultFileFunctions.loadResults(resultfiles[1]; useAveragesOnly = true)
+function load_and_merge_results(resultfiles, primaryionslist; onlyUseAverages = true)
+    mResfinal_PIs = ResultFileFunctions.loadResults(resultfiles[1]; useAveragesOnly = onlyUseAverages, massesToLoad = primaryionslist)
+    mResfinal = ResultFileFunctions.loadResults(resultfiles[1]; useAveragesOnly = onlyUseAverages)
 
     #mResfinal_PIs.MasslistCompositions = #########TO DO: rewrite name from C10H15H+.NH4+ to C10H16.NH4+
 
     if length(resultfiles) > 1
         for i in 2:length(resultfiles)
-            mResfinal_PIs = ResultFileFunctions.joinResultsTime(mResfinal_PIs, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = true, massesToLoad = primaryionslist))
+            mResfinal_PIs = ResultFileFunctions.joinResultsTime(mResfinal_PIs, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = onlyUseAverages, massesToLoad = primaryionslist))
             mResfinal_PIs.Traces .= mResfinal_PIs.Traces .* transpose(sqrt.(100 ./ mResfinal_PIs.MasslistMasses)) #duty cycle correction for primary ions
-            mResfinal = ResultFileFunctions.joinResultsTime(mResfinal, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = true))
+            mResfinal = ResultFileFunctions.joinResultsTime(mResfinal, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = onlyUseAverages))
             mResfinal.Traces .= mResfinal.Traces .* transpose(sqrt.(100 ./ mResfinal.MasslistMasses)) #duty cycle correction for all masses
         end
     end
@@ -793,11 +793,11 @@ During execution, the function will prompt for:
 - Hexanone vs. PI parameters: `Hexanone_VS_PIs_params.csv` (if processing HDF5 dry calibration file)
 - Exported traces: `CLOUD_PTR_<ionization>_ambient_vXX.txt` in `resultfp` (if `exportTraces=true`)
 """
-function calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+function calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict;useAverages=true)
     
     primaryionslist = ask_for_PIList()
     hexVSpis_params = load_hexVSpis_params(drycalibsfile, refMass, primaryionslist)
-    mResfinal, mResfinal_PIs = load_and_merge_results(resultfiles, primaryionslist) #PI: (58, 1) #rest of masses: (58, 1195)
+    mResfinal, mResfinal_PIs = load_and_merge_results(resultfiles, primaryionslist; onlyUseAverages = useAverages) #PI: (58, 1) #rest of masses: (58, 1195)
     summedPIs = compute_summed_primary_ions(mResfinal_PIs)
 
     licorDat = load_licor_data(dir_licor_data)
@@ -815,10 +815,10 @@ function calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resu
     return mResfinal, dcps_per_ppb
 end
 
-function calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+function calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict;useAverages=true)
     primaryionslist = ask_for_PIList()
     hexVSpis_params = load_hexVSpis_params(drycalibsfile, refMass, primaryionslist)
-    mResfinal, mResfinal_PIs = load_and_merge_results(resultfiles, primaryionslist) #PI: (58, 1) #rest of masses: (58, 1195)
+    mResfinal, mResfinal_PIs = load_and_merge_results(resultfiles, primaryionslist; onlyUseAverages = useAverages) #PI: (58, 1) #rest of masses: (58, 1195)
     summedPIs = compute_summed_primary_ions(mResfinal_PIs)
 
     dcps_per_ppb = build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName)

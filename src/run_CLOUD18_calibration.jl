@@ -43,6 +43,8 @@ humcalibfile = joinpath(std_fp, "fitParameters_relative.txt") #humcalibfp
 result_fp = joinpath(dir_calib_data, "dry_std", "results")
 resultfiles = [drycalibsfile]
 
+onlyUseAverages = false # false for high-time-resolution
+
 ionization = "NH3H+" #  "H+"...
 primaryionslist = [] #chosen by user
 refCompound = MasslistFunctions.createCompound(C=6, H=15,O=1,N=1) # Hexanone
@@ -100,9 +102,9 @@ let
                 userinput = readline()
         end
         if userinput == "y"
-                mResfinal, dcps_per_ppb = CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+                mResfinal, dcps_per_ppb = CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict;useAverages=onlyUseAverages)
         elseif userinput == "n"
-                mResfinal, dcps_per_ppb = CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict)
+                mResfinal, dcps_per_ppb = CLOUD18_calibration.CalibrateTraces.calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict;useAverages=onlyUseAverages)
         end
 end
 # 3. Run Inlet Loss Correction for each chamber temperature condition applicable to the calibrated data
