@@ -409,10 +409,10 @@ Load and merge measurement results from multiple result files and return the mer
 - `mResfinal_PIs::struct`: Merged measurement results for primary ions only.
 """
 function load_and_merge_results(resultfiles, primaryionslist; onlyUseAverages = true)
+
+    #=
     mResfinal_PIs = ResultFileFunctions.loadResults(resultfiles[1]; useAveragesOnly = onlyUseAverages, massesToLoad = primaryionslist)
     mResfinal = ResultFileFunctions.loadResults(resultfiles[1]; useAveragesOnly = onlyUseAverages)
-
-    #mResfinal_PIs.MasslistCompositions = #########TO DO: rewrite name from C10H15H+.NH4+ to C10H16.NH4+
 
     if length(resultfiles) > 1
         for i in 2:length(resultfiles)
@@ -422,10 +422,30 @@ function load_and_merge_results(resultfiles, primaryionslist; onlyUseAverages = 
             mResfinal.Traces .= mResfinal.Traces .* transpose(sqrt.(100 ./ mResfinal.MasslistMasses)) #duty cycle correction for all masses
         end
     end
+    =#
+  
+    mResfinal_PIs = nothing
+    mResfinal = nothing
 
-    #Loaded (58, 1195) traces
-    #Loaded and merged 1 result file with a total of 58 time points and 1195 masses.
-    
+    for (i, resultfile) in enumerate(resultfiles)
+        # Load current file
+        current_mResfinal_PIs = ResultFileFunctions.loadResults(resultfile; useAveragesOnly = onlyUseAverages, massesToLoad = primaryionslist)
+        current_mResfinal = ResultFileFunctions.loadResults(resultfile; useAveragesOnly = onlyUseAverages)
+        
+        # Apply duty cycle correction
+        current_mResfinal_PIs.Traces .= current_mResfinal_PIs.Traces .* transpose(sqrt.(100 ./ current_mResfinal_PIs.MasslistMasses)) #duty cycle correction for primary ions
+        current_mResfinal.Traces .= current_mResfinal.Traces .* transpose(sqrt.(100 ./ current_mResfinal.MasslistMasses)) #duty cycle correction for all masses
+        
+        # Merge with previous results
+        if i == 1
+            mResfinal_PIs = current_mResfinal_PIs
+            mResfinal = current_mResfinal
+        else
+            mResfinal_PIs = ResultFileFunctions.joinResultsTime(mResfinal_PIs, current_mResfinal_PIs)
+            mResfinal = ResultFileFunctions.joinResultsTime(mResfinal, current_mResfinal)
+        end
+    end
+
     return mResfinal, mResfinal_PIs
 end
 
