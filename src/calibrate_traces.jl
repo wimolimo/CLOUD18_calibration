@@ -339,7 +339,7 @@ function ask_for_PIList()
 
     userinput = readline()
     while !(userinput in ["f", "w", "n", "o"])
-        println("Invalid input. Please enter 'f' for full list, 'n' for NH4+ and NH3.NH4+, 'w' for H3O+ and H2O.H3O+, or 'o' for NH4+ only.")
+        println("Invalid input. Please enter 'f' for full list, 'n' for NH4+ and NH3.NH4+, 'w' for H3O+ and H2O.H3O+ or 'o' for NH4+ only.")
         userinput = readline()
     end
     println("massLibrary: ", massLibrary)

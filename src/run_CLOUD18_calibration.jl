@@ -32,16 +32,16 @@ hum_file = joinpath(dir_licor_data, "2025-11-21.txt") #licor file for humidity d
 humcalibfile = joinpath(std_fp, "fitParameters_relative.txt") #humcalibfp
 
 #file to be calibrated at once with same mass list
-#resultfp = joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "2025-11-25") #change result filepath to data that is analyzed #results of this script are also saved here
-#resultfiles = ["$(resultfp)/results/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
+resultfp = joinpath(dir_CLOUD18, "CLOUD18_data", "Nonanal", "Nonanal_10deg") #change result filepath to data that is analyzed #results of this script are also saved here
+resultfiles = ["$(resultfp)/results/_result.hdf5"] #adjust filename, can add multiple files #["$(resultfp)part1/results/_result.hdf5","$(resultfp)part2/results/_result.hdf5"]
 
 #hum dep calibration data as result file for testing if 1ppb hexanone is correctly calibrated to 1ppb at different AHs
 #resultfp = std_fp 
 #resultfiles = ["$(resultfp)/_result.hdf5"] 
 
 #dry calibs data as result for testing if 1ppb hexanone is correctly calibrated to 1ppb at dry conditions
-result_fp = joinpath(dir_calib_data, "dry_std", "results")
-resultfiles = [drycalibsfile]
+#result_fp = joinpath(dir_calib_data, "dry_std", "results")
+#resultfiles = [drycalibsfile]
 
 ionization = "NH4+" # "NH4+", "H+"...
 primaryionslist = [] #chosen by user
@@ -50,10 +50,10 @@ refName = TOFTracer2.MasslistFunctions.sumFormulaStringFromCompositionArray(mass
 
 exportTraces = true # if true, check HeaderForExportDict below:
 HeaderForExportDict = Dict(
-        "title"=>"Example calibration of Nonanal data set from CLOUD18 campaign",
+        "title"=>"Calibration of Nonanal run in CLOUD18 at 10 degrees, with humidity calibration",
         "level"=>2,
         "version"=>"01",
-        "authorname_mail"=>"Ruth, Clea clea.ruth@uibk.ac.at; Wittler, Timo wittler.timo@uibk.ac.at",
+        "authorname_mail"=>"Ruth, Clea clea.ruth@uibk.ac.at",
         "units"=>"ppt",
         "addcomment"=>"The data have been humidity-depently calibrated with Hexanone as reference (Onr=1), compounds with Onr>1 are calibrated with kinetic limit. All traces have been corrected to the duty-cycle-corrected primary ion trace. Uncertainty roughly factor 3. Not transmission-corrected yet.\n",
         "threshold"=>0,
