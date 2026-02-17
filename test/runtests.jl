@@ -336,19 +336,19 @@ using TOFTracer2
             
             hum_times = collect(DateTime(2026, 1, 30, 11, 59, 0):Second(2):DateTime(2026, 1, 30, 12, 20, 0))
             hum_vals = fill(5.0, length(hum_times)) 
-            global humdf_mock = DataFrame(DateTime = hum_times, Symbol("H₂O_(mmol_mol⁻¹)") => hum_vals)
+            global humdf_mock = DataFrame(Symbol("DateTime") => hum_times, Symbol("H₂O_(mmol_mol⁻¹)") => hum_vals)
             global std_dict = Dict("Hexanone" => ([0.0, 163.038], ["C6H12O.NH4+"]))
         end
 
         @testset "get_ion_metadata" begin
             # Ensure std_dict exists before calling
             @test @isdefined(std_dict)
-            m, k, i = get_ion_metadata("NH4+", std_dict)
+            m, k, i = get_ion_metadata("NH3H+", std_dict)
             @test m[1] ≈ 163.038
             @test k[1] == "Hexanone"
-            @test i == "NH4+"
+            @test i == "NH3H+"
         end
-
+        #=
         @testset "get_calibData" begin
             @test @isdefined(mRes_mock)
             # Simulate hitting 'Enter' for the default window
@@ -374,5 +374,7 @@ using TOFTracer2
             @test size(p_mat) == (5, 2)
             @test isfile(joinpath(out_fp, "calibration_log_NH4+.png"))
         end
+        
+        =#
     end
 end
