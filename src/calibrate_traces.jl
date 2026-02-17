@@ -334,12 +334,13 @@ function ask_for_PIList()
     println("Which primary ions will be used for the calibration?")
     println("press 'f': full list (all water and ammonium clusters)")
     println("press 'w': H3O+ and H2O.H3O+")
-    println("press 'n': NH4+ and NH3.NH4+")
+    println("press 'nn': NH4+ and NH3.NH4+")
+    println("press 'n': NH4+, NH3.NH4+, H2O.NH4+, H2OH2O.NH4+")
     println("press 'o': NH4+ only")
 
     userinput = readline()
-    while !(userinput in ["f", "w", "n", "o"])
-        println("Invalid input. Please enter 'f' for full list, 'n' for NH4+ and NH3.NH4+, 'w' for H3O+ and H2O.H3O+, or 'o' for NH4+ only.")
+    while !(userinput in ["f", "w", "nn", "n", "o"])
+        println("Invalid input. Please enter 'f' for full list, 'nn' for NH4+ and NH3.NH4+, \n 'n'for NH4+, NH3.NH4+, H2O.NH4+, H2OH2O.NH4+, 'w' for H3O+ and H2O.H3O+, or 'o' for NH4+ only.")
         userinput = readline()
     end
     println("massLibrary: ", massLibrary)
@@ -348,7 +349,12 @@ function ask_for_PIList()
     elseif userinput == "o"
         primaryionslist = MasslistFunctions.massFromComposition(H=3, N=1) #H+ is added automatically in massFromComposition
     elseif userinput == "n"
-        primaryionslist = [MasslistFunctions.massFromComposition(H=3, N=1), 
+        primaryionslist = [MasslistFunctions.massFromComposition(H=3, N=1),
+                           MasslistFunctions.massFromComposition(H=6, N=2),
+                           MasslistFunctions.massFromComposition(H=5, O=1, N=1),
+                           MasslistFunctions.massFromComposition(H=7, O=1, N=1)] #NH4+, NH3.NH4+, H2O.NH4+, H2OH2O.NH4+
+    elseif userinput == "nn"
+        primaryionslist = [MasslistFunctions.massFromComposition(H=3, N=1),
                            MasslistFunctions.massFromComposition(H=6, N=2)] #NH4+ and NH3.NH4+
     elseif userinput == "w"
         primaryionslist = [MasslistFunctions.massFromComposition(H=2, O=1), 
