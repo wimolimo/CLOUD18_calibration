@@ -56,7 +56,7 @@ The package uses hexanone (C6H12O) as the primary reference compound and support
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/wimolimo/CLOUD18_calibration.jl.git
+git clone https://github.com/wimolimo/CLOUD18_calibration.git
 cd CLOUD18_calibration
 ```
 

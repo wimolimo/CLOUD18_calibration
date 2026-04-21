@@ -410,20 +410,6 @@ Load and merge measurement results from multiple result files and return the mer
 """
 function load_and_merge_results(resultfiles, primaryionslist; onlyUseAverages = true)
 
-    #=
-    mResfinal_PIs = ResultFileFunctions.loadResults(resultfiles[1]; useAveragesOnly = onlyUseAverages, massesToLoad = primaryionslist)
-    mResfinal = ResultFileFunctions.loadResults(resultfiles[1]; useAveragesOnly = onlyUseAverages)
-
-    if length(resultfiles) > 1
-        for i in 2:length(resultfiles)
-            mResfinal_PIs = ResultFileFunctions.joinResultsTime(mResfinal_PIs, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = onlyUseAverages, massesToLoad = primaryionslist))
-            mResfinal_PIs.Traces .= mResfinal_PIs.Traces .* transpose(sqrt.(100 ./ mResfinal_PIs.MasslistMasses)) #duty cycle correction for primary ions
-            mResfinal = ResultFileFunctions.joinResultsTime(mResfinal, ResultFileFunctions.loadResults(resultfiles[i]; useAveragesOnly = onlyUseAverages))
-            mResfinal.Traces .= mResfinal.Traces .* transpose(sqrt.(100 ./ mResfinal.MasslistMasses)) #duty cycle correction for all masses
-        end
-    end
-    =#
-  
     mResfinal_PIs = nothing
     mResfinal = nothing
 
@@ -718,7 +704,7 @@ function export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderFor
 
     filterCnr = mResfinal.MasslistCompositions[findfirst(mResfinal.MasslistElements .== "C"), :] .>= 1 #filter for masses with at least one carbon
     filterNoCalib = vec(sum(dcps_per_ppb; dims=1) .> 0) #filter for masses with calibration data
-    filterNnr = mResfinal.MasslistCompositions[findfirst(mResfinal.MasslistElements .== "N"), :] .== 1 #filter for masses with exactly one nitrogen; adjust if want to export other masses
+    filterNnr = mResfinal.MasslistCompositions[findfirst(mResfinal.MasslistElements .== "N"), :] .<= 3 #filter for masses with exactly one nitrogen; adjust if want to export other masses
     finalfilter = filterCnr .& filterNoCalib .& filterNnr
 
     calibResult = #contains only filtered masses
@@ -780,7 +766,6 @@ function export_calibrated_traces(mResfinal, dcps_per_ppb, ionization, HeaderFor
         average = 0
     )
 end
-
 
 ###############################################################################
 # Main Script
