@@ -379,7 +379,7 @@ Load or create and save hexanone vs. primary ion calibration parameters, using T
 - `hexVSpis_params::Tuple`: Tuple containing parameters, errors, and metadata. Hexanone was in dcps/ppb, PIs in dcps.
 
 # Saves
-- CSV file with hexanone vs. primary ion calibration parameters if loaded from HDF5, in the same directory as `drycalibsfile`.
+- CSV file with hexanone vs. primary ion calibration parameters if loaded from HDF5, in the same directory as `drycalibsfile`, called `Hexanone_VS_PIs_params.csv`.
 """
 function load_hexVSpis_params(drycalibsfile::String, refMass, primaryionslist)
     if ishdf5(drycalibsfile)
@@ -387,8 +387,8 @@ function load_hexVSpis_params(drycalibsfile::String, refMass, primaryionslist)
         hexVSpis_params2export = vcat(hexVSpis_params[3], ["parameters" "errors"], hcat(hexVSpis_params[1], hexVSpis_params[2]))
         CSV.write("$(dirname(drycalibsfile))\\Hexanone_VS_PIs_params.csv", DataFrame(hexVSpis_params2export, :auto)) 
     else
-        a = CSV.read(drycalibsfile, DataFrame, header=[2])
-        b = CSV.read(drycalibsfile, DataFrame; footerskip=3, header=false)
+        a = CSV.read(drycalibsfile, DataFrame, header=[3])
+        b = CSV.read(drycalibsfile, DataFrame; footerskip=3, header=[1])
         hexVSpis_params = (a.parameters, a.errors, [values(b[1, :])[1], values(b[1, :])[2]])
     end
     return hexVSpis_params
