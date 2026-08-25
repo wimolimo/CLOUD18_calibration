@@ -408,7 +408,7 @@ Load and merge measurement results from multiple result files and return the mer
 - `mResfinal::struct`: Merged measurement results for all masses (selectedTimes, selectedMasslistMasses, masslistElements, masslistElementsMasses, selectedMassesCompositions, traces).
 - `mResfinal_PIs::struct`: Merged measurement results for primary ions only.
 """
-function load_and_merge_results(resultfiles, primaryionslist; onlyUseAverages = true)
+function load_and_merge_results(resultfiles, primaryionslist, resultfp; onlyUseAverages = true)
 
     mResfinal_PIs = nothing
     mResfinal = nothing
@@ -430,6 +430,18 @@ function load_and_merge_results(resultfiles, primaryionslist; onlyUseAverages = 
             mResfinal_PIs = ResultFileFunctions.joinResultsTime(mResfinal_PIs, current_mResfinal_PIs)
             mResfinal = ResultFileFunctions.joinResultsTime(mResfinal, current_mResfinal)
         end
+    end
+
+    # ── Save results as CSV ──────────────────────────────────
+    for (mres, name) in [(mResfinal, "mResfinal", mResfinal_PIs, "mResfinal_PIs")]
+        mres === nothing && continue
+        df = DataFrame("time" => mres.Times)
+        for (j, mass) in enumerate(mres.MasslistMasses)
+            df[!, string(mass)] = mres.Traces[:, j]
+        end
+        fpath = joinpath(resultfp, "$(name)_dcps.csv")
+        CSV.write(fpath, df)
+        @info "Saved $fpath"
     end
 
     return mResfinal, mResfinal_PIs
@@ -805,10 +817,11 @@ During execution, the function will prompt for:
 - Exported traces: `CLOUD_PTR_<ionization>_ambient_vXX.txt` in `resultfp` (if `exportTraces=true`)
 """
 function calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict;useAverages=true)
-    
-    primaryionslist = ask_for_PIList()
+
+    # primaryionslist = ask_for_PIList()
+    primaryionslist = massLibrary.FullPrimaryionslist_NH4soft #adding all possible water and ammonium clusters: [18.033836, 19.017856000000002, 35.060396, 36.044416, 37.028436, 52.086956, 53.070975999999995, 54.054996, 72.065576]
     hexVSpis_params = load_hexVSpis_params(drycalibsfile, refMass, primaryionslist)
-    mResfinal, mResfinal_PIs = load_and_merge_results(resultfiles, primaryionslist; onlyUseAverages = useAverages) #PI: (58, 1) #rest of masses: (58, 1195)
+    mResfinal, mResfinal_PIs = load_and_merge_results(resultfiles, primaryionslist, resultfp; onlyUseAverages = useAverages) #PI: (58, 1) #rest of masses: (58, 1195)
     summedPIs = compute_summed_primary_ions(mResfinal_PIs)
 
     licorDat = load_licor_data(dir_licor_data)
@@ -827,9 +840,11 @@ function calibrate_traces_main(dir_licor_data, humcalibfile, drycalibsfile, resu
 end
 
 function calibrate_traces_main(drycalibsfile, resultfp, resultfiles, ionization, refMass, refName, exportTraces, HeaderForExportDict;useAverages=true)
-    primaryionslist = ask_for_PIList()
+    
+    # primaryionslist = ask_for_PIList()
+    primaryionslist = massLibrary.FullPrimaryionslist_NH4soft #adding all possible water and ammonium clusters: [18.033836, 19.017856000000002, 35.060396, 36.044416, 37.028436, 52.086956, 53.070975999999995, 54.054996, 72.065576]
     hexVSpis_params = load_hexVSpis_params(drycalibsfile, refMass, primaryionslist)
-    mResfinal, mResfinal_PIs = load_and_merge_results(resultfiles, primaryionslist; onlyUseAverages = useAverages) #PI: (58, 1) #rest of masses: (58, 1195)
+    mResfinal, mResfinal_PIs = load_and_merge_results(resultfiles, primaryionslist, resultfp; onlyUseAverages = useAverages) #PI: (58, 1) #rest of masses: (58, 1195)
     summedPIs = compute_summed_primary_ions(mResfinal_PIs)
 
     dcps_per_ppb = build_calibration_traces(mResfinal, summedPIs, hexVSpis_params, refName)
